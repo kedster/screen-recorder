@@ -52,7 +52,16 @@ app.post('/upload-video', upload.single('file'), (req, res) => {
   const outPath = path.join(recordingsDir, outName);
 
   // Try to run ffmpeg to convert webm -> mp4
-  execFile('ffmpeg', ['-y', '-i', savedPath, '-c:v', 'libx264', '-preset', 'veryfast', '-c:a', 'aac', outPath], (err, stdout, stderr) => {
+  execFile('ffmpeg', [
+    '-y', '-i', savedPath,
+    '-c:v', 'libx264',        // Re-encode video to H.264 (required for MP4)
+    '-preset', 'fast',        // Faster encoding
+    '-crf', '23',             // Good quality balance
+    '-c:a', 'aac',            // Re-encode audio to AAC (required for MP4)
+    '-b:a', '128k',           // Audio bitrate
+    '-movflags', '+faststart', // Optimize for web streaming
+    outPath
+  ], (err, stdout, stderr) => {
     if (err) {
       // ffmpeg not available or conversion failed; return original file
       console.warn('ffmpeg conversion failed or not available:', err.message);
