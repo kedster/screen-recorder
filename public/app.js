@@ -3,6 +3,7 @@ import { storage } from './js/storage.js';
 import { overlayUtils } from './js/overlay-utils.js';
 import { recordingUtils } from './js/recording-utils.js';
 import { mp4Utils } from './js/mp4-utils.js';
+import { ChunkedUploader } from './js/chunked-upload.js';
 
 // UI Elements
 const startTabBtn = document.getElementById('startTab');
@@ -261,74 +262,30 @@ async function onAudioStop() {
     }
 }
 
-// Process recorded screen capture
+// Process recorded screen capture with backend processing
 async function onScreenStop() {
-    let videoUrl;
-    let videoEl;
-    let blob; // will hold the recorded data for fallback paths
-
     try {
-    // Prevent chunks from being cleared while we process
-    recordingUtils._freezeChunks = true;
-        console.log('Processing screen recording...');
+        // Prevent chunks from being cleared while we process
+        recordingUtils._freezeChunks = true;
+        console.log('Processing screen recording with backend...');
         setStatus('Processing screen recording...');
-        showToast('Processing recording...');
+        showToast('Processing recording...', 'info');
 
         // First verify we have data
         if (!recordingUtils.chunks.length) {
             throw new Error('No recording data available');
         }
 
-    blob = new Blob(recordingUtils.chunks, { type: 'video/webm' });
+        const blob = new Blob(recordingUtils.chunks, { type: 'video/webm' });
         if (blob.size === 0) {
             throw new Error('Recording is empty');
         }
         
-        // Create temporary video element for processing
-    videoEl = document.createElement('video');
-        videoEl.muted = true;
-    videoEl.preload = 'auto';
-    videoEl.playsInline = true;
-        videoUrl = URL.createObjectURL(blob);
-        videoEl.src = videoUrl;
-    try { videoEl.currentTime = 0; } catch (_) {}
-        
-        // Add error handling for video loading (keep original listeners, add guards)
-        await new Promise((resolve, reject) => {
-            // Original listeners (retained)
-            videoEl.addEventListener('loadeddata', resolve);
-            videoEl.addEventListener('error', (e) => reject(new Error('Failed to load video: ' + (e.error?.message || 'Unknown error'))));
+        console.log(`Recording blob size: ${blob.size} bytes`);
 
-            // Guarded listeners to ensure single settle
-            let done = false;
-            const safeResolve = () => { if (done) return; done = true; resolve(); };
-            const safeReject = (e) => { if (done) return; done = true; reject(new Error('Failed to load video: ' + (e.error?.message || 'Unknown error'))); };
-            videoEl.addEventListener('loadeddata', safeResolve);
-            videoEl.addEventListener('canplay', safeResolve);
-            videoEl.addEventListener('canplaythrough', safeResolve);
-            videoEl.addEventListener('error', safeReject);
-
-            // Duplicate load calls retained from prior edits
-            videoEl.load();
-            videoEl.load();
-
-            // Poll readystate as last resort (do not remove existing logic)
-            const start = Date.now();
-            const timer = setInterval(() => {
-                // readyState >= 2 means have current data
-                if ((videoEl.readyState ?? 0) >= 2) {
-                    clearInterval(timer);
-                    safeResolve();
-                } else if (Date.now() - start > 5000) {
-                    clearInterval(timer);
-                    safeReject(new Error('Failed to load video: timeout'));
-                }
-            }, 100);
-        });
-        
-        // Get and process overlay options
+        // Get overlay options for backend processing
         const options = getOverlayOptions();
-        console.log('Overlay options for export:', JSON.parse(JSON.stringify({
+        const processingOptions = {
             frame: options.frame,
             frameSize: options.frameSize,
             frameColorStart: options.frameColorStart,
@@ -337,177 +294,105 @@ async function onScreenStop() {
             labelText: options.labelText,
             icon: options.icon,
             iconOpacity: options.iconOpacity,
-            hasIconImage: !!options.iconImage
-        })));
-        if (options.icon) {
-            const iconFile = document.getElementById('iconFile').files[0];
-            if (iconFile) {
-                try {
-                    options.iconImage = await overlayUtils.processIcon(iconFile, 64);
-                } catch (err) {
-                    console.error('Failed to process icon:', err);
-                    showToast('Icon processing failed, continuing without icon', 'error');
-                }
-            }
-        }
-        
-        // Process video with overlays
-        console.log('Creating canvas with overlays...');
-    const canvas = await overlayUtils.createVideoCanvas(videoEl, options);
-        if (!canvas) {
-            throw new Error('Failed to create video canvas');
-        }
-    console.log('Overlay canvas size:', { width: canvas.width, height: canvas.height });
-
-        console.log('Setting up processed stream...');
-    const processedStream = canvas.captureStream(30);
-    // Give the canvas a moment to render an initial frame
-    await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
-    console.log('Processed stream tracks:', processedStream.getTracks().map(t => ({ kind: t.kind, readyState: t.readyState }))); 
-        
-        // Add audio from original recording
-        try {
-            console.log('Processing audio...');
-            const arrayBuffer = await blob.arrayBuffer();
-            const audioContext = new AudioContext();
-            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-            const source = audioContext.createBufferSource();
-            source.buffer = audioBuffer;
-            const dest = audioContext.createMediaStreamDestination();
-            source.connect(dest);
-            try { source.start(0); } catch (_) { /* ignore if already started */ }
-            const audioTrack = dest.stream.getAudioTracks()[0];
-            if (audioTrack) {
-                processedStream.addTrack(audioTrack);
-            } else {
-                console.warn('No audio track available');
-            }
-        } catch (audioErr) {
-            console.error('Audio processing error:', audioErr);
-            showToast('Audio processing failed, continuing without audio', 'error');
-        }
-        
-        // Record processed stream
-        console.log('Recording processed stream...');
-    const processedRecorder = new MediaRecorder(processedStream, {
-            mimeType: 'video/webm;codecs=vp8,opus'
-        });
-        const processedChunks = [];
-        
-        processedRecorder.ondataavailable = e => {
-            if (e.data?.size) {
-                console.log('Got processed chunk:', e.data.size, 'bytes');
-                processedChunks.push(e.data);
-            }
+            convertToMp4: document.getElementById('convertToMp4').checked,
         };
-        
-        await new Promise((resolve, reject) => {
-            let processed = false;
-            let stopped = false;
 
-            const finish = () => {
-                if (processed) return;
-                processed = true;
-                console.log('Processing completed; chunks:', processedChunks.length);
-                resolve();
-            };
+        console.log('Sending to backend with options:', processingOptions);
 
-            processedRecorder.onstop = () => {
-                stopped = true;
-                // Give a short grace period for any late dataavailable
-                setTimeout(finish, 200);
-            };
-            
-            processedRecorder.onerror = (err) => {
-                reject(new Error('Recording failed: ' + err.message));
-            };
-
-            try {
-                // Use timeslice to get chunks periodically; helps ensure data before stop
-                processedRecorder.start(1000);
-                videoEl.play();
-                const duration = Number.isFinite(videoEl.duration) && videoEl.duration > 0
-                    ? videoEl.duration * 1000
-                    : 3000; // fallback duration if metadata is unavailable
-                console.log('Processing video, duration:', duration, 'ms');
-                setTimeout(() => {
-                    try { processedRecorder.requestData(); } catch (_) {}
-                    setTimeout(() => {
-                        if (!stopped) {
-                            try { processedRecorder.stop(); } catch (_) {}
-                        }
-                    }, 120);
-                }, duration + 500); // slight extra buffer
-            } catch (err) {
-                reject(err);
+        // Create chunked uploader with progress tracking
+        const uploader = new ChunkedUploader({
+            baseUrl: '', // Use same domain - _redirects will proxy to worker
+            chunkSize: 1024 * 1024, // 1MB chunks
+            onProgress: (progress) => {
+                const percent = Math.round(progress.progress);
+                setStatus(`Uploading... ${percent}% (${progress.chunksCompleted}/${progress.totalChunks} chunks)`);
+            },
+            onError: (error) => {
+                console.error('Upload error:', error);
+                showToast(`Upload failed: ${error.error}`, 'error');
             }
         });
-    
-        // Create final video blob
-        console.log('Creating final video blob...');
-        if (processedChunks.length === 0) {
-            throw new Error('No processed video data available');
+
+        // Generate filename
+        const timestamp = Date.now();
+        const filename = `recording_${timestamp}.webm`;
+
+        setStatus('Uploading to backend for processing...');
+        
+        // Use smart upload (chunked for large files, direct for small ones)
+        const result = await uploader.smartUpload(blob, filename, {
+            ...processingOptions,
+            chunkThreshold: 5 * 1024 * 1024, // 5MB threshold
+            maxConcurrent: 3, // Limit concurrent chunk uploads
+            resumable: true,
+        });
+
+        console.log('Backend processing completed:', result);
+
+        // For now, save the result to local storage as well for the downloads UI
+        // In the future, this could be replaced with a backend API call to list recordings
+        try {
+            // Create a minimal blob reference for local storage
+            const resultBlob = new Blob(['Backend processed file'], { type: 'video/webm' });
+            const id = await storage.saveRecording(resultBlob, 'video/webm', sessionId, {
+                backendPath: result.path,
+                backendProcessed: true,
+                originalSize: blob.size,
+                processedSize: result.size,
+            });
+            console.log('Local reference saved with ID:', id);
+        } catch (storageError) {
+            console.warn('Failed to save local reference:', storageError);
+            // Don't fail the entire process for storage errors
         }
 
-        let finalBlob = new Blob(processedChunks, { type: 'video/webm' });
-        if (finalBlob.size === 0) {
-            throw new Error('Processed video is empty');
-        }
+        // Clear chunks now that we've successfully processed
+        recordingUtils.chunks = [];
+        recordingUtils._freezeChunks = false;
         
-        // Convert to MP4 if enabled
-        if (document.getElementById('convertToMp4').checked) {
-            setStatus('Converting to MP4...');
-            showToast('Converting to MP4...', 'info');
-            try {
-                console.log('Converting to MP4...');
-                finalBlob = await mp4Utils.convertToMp4(finalBlob);
-                console.log('MP4 conversion successful, size:', finalBlob.size);
-                showToast('MP4 conversion successful', 'success');
-            } catch (convErr) {
-                console.error('MP4 conversion failed:', convErr);
-                showToast('MP4 conversion failed: ' + convErr.message + ' - Saving as WebM', 'error');
-                // finalBlob remains as WebM
-            }
-        }
-        
-        // Save the recording
-        console.log('Saving recording...');
-        const id = await storage.saveRecording(finalBlob, finalBlob.type, sessionId);
-        console.log('Recording saved with ID:', id);
-        
-    // Clear chunks now that we saved
-    recordingUtils.chunks = [];
-    recordingUtils._freezeChunks = false;
-    await updateDownloadsList();
-        setStatus('Recording saved successfully');
-        showToast('Recording saved - Check downloads at top of page', 'success');
+        await updateDownloadsList();
+        setStatus('Recording processed and saved successfully!');
+        showToast('Recording processed by backend - Check downloads at top of page', 'success');
         
         window.scrollTo({ top: 0, behavior: 'smooth' });
+        
     } catch (err) {
-        console.error('Failed during screen processing, attempting fallback:', err);
-    setStatus('Processing failed, saving original file.');
-        try {
-            if (!blob) {
-                // As an extreme fallback, reconstruct from chunks
-                blob = new Blob(recordingUtils.chunks, { type: 'video/webm' });
-            }
-            const id = await storage.saveRecording(blob, blob.type || 'video/webm', sessionId);
-            await updateDownloadsList();
-            setStatus('Saved original recording (fallback)');
-            showToast('Saved original recording (fallback)', 'warning');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        } catch (saveErr) {
-            console.error('Fallback save failed:', saveErr);
-            setStatus('Failed to save recording');
-            showToast('Failed to save recording', 'error');
-        }
+        console.error('Backend processing failed, attempting local fallback:', err);
+        setStatus('Backend processing failed, trying local processing...');
+        showToast('Backend failed, trying local processing...', 'warning');
+        
+        // Fall back to the original local processing as a last resort
+        await onScreenStopFallback();
     } finally {
-        // Clean up resources
-        if (videoUrl) {
-            URL.revokeObjectURL(videoUrl);
-        }
         // Ensure unfreeze even on error
         recordingUtils._freezeChunks = false;
+    }
+}
+
+// Fallback local processing (simplified version of original)
+async function onScreenStopFallback() {
+    try {
+        console.log('Using local processing fallback...');
+        
+        if (!recordingUtils.chunks.length) {
+            throw new Error('No recording data available for fallback');
+        }
+
+        const blob = new Blob(recordingUtils.chunks, { type: 'video/webm' });
+        
+        // Just save the original recording without heavy processing
+        const id = await storage.saveRecording(blob, blob.type || 'video/webm', sessionId);
+        
+        recordingUtils.chunks = [];
+        await updateDownloadsList();
+        setStatus('Saved original recording (local fallback)');
+        showToast('Saved original recording (local fallback)', 'warning');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        
+    } catch (saveErr) {
+        console.error('Fallback save failed:', saveErr);
+        setStatus('Failed to save recording');
+        showToast('Failed to save recording', 'error');
     }
 }
 
@@ -538,27 +423,54 @@ function createDownloadLink(recording) {
     const container = document.createElement('div');
     container.className = 'download-item';
     
+    const isBackendProcessed = recording.metadata?.backendProcessed;
+    const backendPath = recording.metadata?.backendPath;
+    
     const downloadBtn = document.createElement('a');
     downloadBtn.href = '#';
     downloadBtn.className = 'download-button';
+    
+    const typeLabel = recording.type.includes('video') ? 'Video' : 'Audio';
+    const processingLabel = isBackendProcessed ? ' (Backend Processed)' : '';
+    const sizeLabel = recording.metadata?.processedSize ? 
+        ` - ${Math.round(recording.metadata.processedSize / 1024 / 1024 * 100) / 100}MB` : '';
+    
     downloadBtn.innerHTML = `
         <i class="fas fa-download"></i>
-        <span>${recording.type.includes('video') ? 'Video' : 'Audio'} (${formatDate(recording.timestamp)})</span>
+        <span>${typeLabel}${processingLabel} (${formatDate(recording.timestamp)})${sizeLabel}</span>
     `;
     
     downloadBtn.addEventListener('click', async (e) => {
         e.preventDefault();
         try {
-            const url = URL.createObjectURL(recording.blob);
+            let downloadUrl;
+            let filename = `recording_${recording.id}.${getFileExtension(recording.type)}`;
+            
+            if (isBackendProcessed && backendPath) {
+                // Download from backend
+                console.log('Downloading from backend:', backendPath);
+                downloadUrl = backendPath; // This will be proxied by _redirects
+                filename = `recording_${recording.id}_processed.${getFileExtension(recording.type)}`;
+            } else {
+                // Download from local blob
+                downloadUrl = URL.createObjectURL(recording.blob);
+            }
+            
             const a = document.createElement('a');
-            a.href = url;
-            a.download = `recording_${recording.id}.${getFileExtension(recording.type)}`;
+            a.href = downloadUrl;
+            a.download = filename;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            
+            // Only revoke if it's a local blob URL
+            if (!isBackendProcessed) {
+                URL.revokeObjectURL(downloadUrl);
+            }
             
             await storage.markDownloaded(recording.id);
+            showToast('Download started successfully');
+            
         } catch (err) {
             console.error('Download error:', err);
             showToast('Download failed: ' + err.message, 'error');
