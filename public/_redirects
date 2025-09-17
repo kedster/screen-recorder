@@ -1,0 +1,5 @@
+# Redirects for Cloudflare Pages
+# Redirect API calls to the Cloudflare Worker
+/upload https://screen-recorder-worker.youraccount.workers.dev/upload 200
+/upload-video https://screen-recorder-worker.youraccount.workers.dev/upload-video 200
+/recordings/* https://screen-recorder-worker.youraccount.workers.dev/recordings/:splat 200

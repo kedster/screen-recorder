@@ -3,13 +3,27 @@
   "version": "0.1.0",
   "description": "Simple browser audio recorder (tab/mic) -> MP3 upload and save",
   "main": "server.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "check-node": "scripts/check-node-version.sh",
+    "cf:deploy:worker": "wrangler deploy",
+    "cf:deploy:pages": "wrangler pages deploy public",
+    "cf:dev:worker": "wrangler dev",
+    "cf:dev:pages": "wrangler pages dev public",
+    "cf:setup": "npm run cf:setup:bucket && npm run cf:setup:worker",
+    "cf:setup:bucket": "wrangler r2 bucket create screen-recorder-files",
+    "cf:setup:worker": "wrangler deploy"
   },
   "author": "",
   "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
     "multer": "^1.4.5-lts.1"
+  },
+  "devDependencies": {
+    "wrangler": "^4.37.1"
   }
 }
