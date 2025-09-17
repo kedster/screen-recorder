@@ -4,7 +4,12 @@
   "description": "Simple browser audio recorder (tab/mic) -> MP3 upload and save",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build:pages": "mkdir -p dist && cp -r public/* dist/ && node scripts/update-api-endpoints.js",
+    "dev:worker": "wrangler dev",
+    "deploy:worker": "wrangler deploy",
+    "deploy:pages": "npm run build:pages",
+    "validate-config": "node scripts/validate-config.js"
   },
   "author": "",
   "license": "MIT",

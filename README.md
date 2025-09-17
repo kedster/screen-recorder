@@ -9,6 +9,17 @@ Modern web app to record screen video and audio with a sleek UI and real-time fe
 - ⏱️ Recording timer
 - 🎬 Live video preview
 - 🔔 Toast notifications
+- ☁️ **Cloudflare deployment ready**
+
+## Deployment Options
+
+### Local Development (Node.js)
+Traditional Node.js/Express setup for local development and testing.
+
+### Cloudflare (Production)
+Serverless deployment using Cloudflare Workers and Pages for scalable production hosting.
+
+📖 **[See Cloudflare Deployment Guide](CLOUDFLARE_DEPLOYMENT.md)** for detailed setup instructions.
 
 ## Features
 
@@ -21,6 +32,8 @@ Modern web app to record screen video and audio with a sleek UI and real-time fe
 - Toast notifications for better feedback
 
 ## Setup
+
+### Local Development (Node.js)
 
 1. Install dependencies:
 ```powershell
@@ -40,6 +53,31 @@ npm start
 ```
 
 4. Open http://localhost:3000
+
+### Cloudflare Development
+
+1. Install dependencies and Wrangler:
+```bash
+npm install
+npm install -g wrangler
+```
+
+2. Authenticate with Cloudflare:
+```bash
+wrangler login
+```
+
+3. Start Worker development server:
+```bash
+npm run dev:worker
+```
+
+4. Build frontend for Pages:
+```bash
+npm run build:pages
+```
+
+See [Cloudflare Deployment Guide](CLOUDFLARE_DEPLOYMENT.md) for production deployment.
 
 ## Notes
 

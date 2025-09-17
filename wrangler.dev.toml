@@ -1,0 +1,12 @@
+# Development configuration for Cloudflare Workers
+
+[env.development]
+vars = { 
+  ENVIRONMENT = "development",
+  DEBUG = "true"
+}
+
+# For local development, you can use a local R2-compatible storage or mock
+# [[r2_buckets]]
+# binding = "RECORDINGS_BUCKET"
+# bucket_name = "screen-recorder-dev"
