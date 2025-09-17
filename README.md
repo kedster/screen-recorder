@@ -12,7 +12,7 @@ Modern web app to record screen video and audio with a sleek UI and real-time fe
 
 ## Features
 
-- Records screen with audio, converts to MP4 (requires ffmpeg on server)
+- Records screen with audio, converts to MP4 with intelligent fallback system
 - Records tab/mic audio, converts to MP3 in-browser
 - Modern UI with dark mode support
 - Real-time audio visualization
@@ -49,7 +49,11 @@ npm start
 - For better quality, ffmpeg converts WebM → MP4 server-side
 
 Server-side MP4 conversion:
-- The server will attempt to convert uploaded WebM video to MP4 using `ffmpeg` if it's installed and on PATH. If ffmpeg is not available, the original WebM will be kept.
+- The server will attempt to convert uploaded WebM video to MP4 using `ffmpeg` if it's installed and on PATH
+- If ffmpeg is not available, the original WebM will be kept
+- The conversion uses H.264 video and AAC audio codecs for maximum compatibility
+- Client-side conversion is attempted first, falling back to server-side if unavailable
+- Users receive clear feedback about conversion status through toast notifications
 
 Windows notes:
 - On Windows PowerShell you may see an execution policy error when running npm scripts. Run these commands in PowerShell to use npm:

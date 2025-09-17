@@ -31,7 +31,69 @@ function setStatus(text) {
 }
 
 function showToast(message, type = 'info') {
-    // Implementation of showToast (kept as is)
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    
+    // Add toast styles if they don't exist
+    if (!document.getElementById('toast-styles')) {
+        const style = document.createElement('style');
+        style.id = 'toast-styles';
+        style.textContent = `
+            .toast {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 12px 20px;
+                background: #333;
+                color: white;
+                border-radius: 4px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                z-index: 10000;
+                font-size: 14px;
+                max-width: 300px;
+                opacity: 0;
+                transform: translateX(100%);
+                transition: all 0.3s ease;
+            }
+            .toast.show {
+                opacity: 1;
+                transform: translateX(0);
+            }
+            .toast-success {
+                background: #10b981;
+            }
+            .toast-error {
+                background: #ef4444;
+            }
+            .toast-warning {
+                background: #f59e0b;
+            }
+            .toast-info {
+                background: #3b82f6;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // Add to page
+    document.body.appendChild(toast);
+    
+    // Trigger animation
+    requestAnimationFrame(() => {
+        toast.classList.add('show');
+    });
+    
+    // Remove after 4 seconds
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 300);
+    }, 4000);
 }
 
 // Timer functions
@@ -395,12 +457,16 @@ async function onScreenStop() {
         // Convert to MP4 if enabled
         if (document.getElementById('convertToMp4').checked) {
             setStatus('Converting to MP4...');
+            showToast('Converting to MP4...', 'info');
             try {
                 console.log('Converting to MP4...');
                 finalBlob = await mp4Utils.convertToMp4(finalBlob);
+                console.log('MP4 conversion successful, size:', finalBlob.size);
+                showToast('MP4 conversion successful', 'success');
             } catch (convErr) {
                 console.error('MP4 conversion failed:', convErr);
-                showToast('MP4 conversion failed, saving as WebM', 'error');
+                showToast('MP4 conversion failed: ' + convErr.message + ' - Saving as WebM', 'error');
+                // finalBlob remains as WebM
             }
         }
         

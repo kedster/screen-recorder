@@ -4,24 +4,34 @@ export const mp4Utils = {
         if (!webmBlob) {
             throw new Error('No WebM blob provided');
         }
-        // Resolve potential worker locations. We'll try a few common spots.
-        const candidateWorkerUrls = [
-            // Prefer alongside this file: /public/js/ffmpeg-worker-mp4.js
-            new URL('./ffmpeg-worker-mp4.js', import.meta.url).href,
-            // Or at project root: /public/ffmpeg-worker-mp4.js
-            new URL('../ffmpeg-worker-mp4.js', import.meta.url).href,
-            // Fallbacks using origin (older code path)
-            `${window.location.origin}/ffmpeg-worker-mp4.js`,
-            `${window.location.origin}/js/ffmpeg-worker-mp4.js`
-        ];
-        if (window.location.protocol === 'file:') {
-            console.warn('MP4 conversion: running from file:// may block Worker loading. Use a local web server.');
+        
+        console.log('Attempting client-side MP4 conversion...');
+        
+        try {
+            // Try client-side conversion first
+            return await this.convertClientSide(webmBlob);
+        } catch (clientError) {
+            console.log('Client-side conversion failed, trying server-side:', clientError.message);
+            
+            try {
+                // Fall back to server-side conversion
+                return await this.convertServerSide(webmBlob);
+            } catch (serverError) {
+                console.error('Both client and server conversion failed:', serverError);
+                // Return original blob as fallback
+                console.log('Returning original WebM file');
+                throw new Error('MP4 conversion failed: ' + serverError.message);
+            }
         }
-        console.log('MP4: candidate worker URLs:', candidateWorkerUrls);
+    },
+
+    async convertClientSide(webmBlob) {
+        // Try to use ffmpeg worker for client-side conversion
+        const workerUrl = new URL('./ffmpeg-worker-mp4.js', import.meta.url).href;
         
         return new Promise((resolve, reject) => {
             let worker;
-            let urlIndex = -1;
+            let timeoutId;
 
             const cleanup = () => {
                 if (worker) {
@@ -31,16 +41,24 @@ export const mp4Utils = {
                         console.error('Error terminating worker:', e);
                     }
                 }
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
                 worker = null;
             };
 
-            const attachHandlers = () => {
-                if (!worker) return;
-                worker.onerror = (error) => {
-                    console.warn('MP4 worker error at', candidateWorkerUrls[urlIndex], error);
+            try {
+                worker = new Worker(workerUrl);
+                
+                // Set a timeout for the conversion
+                timeoutId = setTimeout(() => {
                     cleanup();
-                    // Try next candidate URL if available
-                    tryNext();
+                    reject(new Error('Client-side conversion timeout'));
+                }, 30000); // 30 second timeout
+
+                worker.onerror = (error) => {
+                    cleanup();
+                    reject(new Error('Worker error: ' + error.message));
                 };
 
                 worker.onmessage = (e) => {
@@ -51,58 +69,34 @@ export const mp4Utils = {
                     }
 
                     const { type } = e.data;
-                    if (type !== 'stdout' && type !== 'stderr') {
-                        console.log('Worker message:', type);
-                    }
 
                     switch (type) {
                         case 'ready': {
-                            console.log('Worker ready, starting conversion...');
+                            // Worker is ready, start conversion
                             const reader = new FileReader();
-
-                            reader.onerror = (error) => {
-                                console.error('FileReader error:', error);
-                                cleanup();
-                                reject(error);
-                            };
-
                             reader.onload = () => {
-                                console.log('File loaded, sending to worker...');
                                 try {
                                     worker.postMessage({
                                         type: 'run',
-                                        arguments: [
-                                            '-i', 'input.webm',
-                                            // NOTE: Copying codecs from WebM to MP4 is generally not valid (VP8/VP9 + Opus);
-                                            // your ffmpeg build may need to transcode. This is kept minimal per request.
-                                            '-c:v', 'copy',
-                                            '-c:a', 'copy',
-                                            'output.mp4'
-                                        ],
                                         MEMFS: [{
                                             name: 'input.webm',
                                             data: new Uint8Array(reader.result)
                                         }]
                                     });
                                 } catch (error) {
-                                    console.error('Worker postMessage error:', error);
                                     cleanup();
                                     reject(error);
                                 }
                             };
-
+                            reader.onerror = () => {
+                                cleanup();
+                                reject(new Error('Failed to read WebM file'));
+                            };
                             reader.readAsArrayBuffer(webmBlob);
                             break;
                         }
 
-                        case 'stderr':
-                            // ffmpeg logs/errors come through here; keep for debugging
-                            console.debug('[ffmpeg]', e.data.data);
-                            break;
-
                         case 'done': {
-                            console.log('Conversion complete');
-                            // ffmpeg.js returns output in e.data.MEMFS
                             const memfs = e.data.MEMFS || e.data.data?.MEMFS;
                             const outFile = Array.isArray(memfs)
                                 ? (memfs.find(f => f.name === 'output.mp4') || memfs[0])
@@ -119,40 +113,59 @@ export const mp4Utils = {
                         }
 
                         case 'error':
-                            console.error('Conversion error:', e.data);
                             cleanup();
-                            reject(new Error(e.data.error || 'MP4 conversion failed'));
+                            reject(new Error(e.data.error || 'Client-side conversion failed'));
                             break;
 
                         default:
-                            console.warn('Unknown worker message type:', type);
+                            // Ignore other message types
                             break;
                     }
                 };
-            };
 
-            const tryNext = () => {
-                urlIndex += 1;
-                if (urlIndex >= candidateWorkerUrls.length) {
-                    reject(new Error(
-                        'MP4 worker not found. Place ffmpeg-worker-mp4.js at one of: ' + candidateWorkerUrls.join(', ')
-                    ));
-                    return;
-                }
-                const url = candidateWorkerUrls[urlIndex];
-                try {
-                    console.log('Attempting to load MP4 worker from:', url);
-                    worker = new Worker(url);
-                    attachHandlers();
-                } catch (error) {
-                    console.warn('Failed to create worker at', url, error);
-                    cleanup();
-                    tryNext();
-                }
-            };
-
-            tryNext();
+            } catch (error) {
+                cleanup();
+                reject(new Error('Failed to create worker: ' + error.message));
+            }
         });
+    },
+
+    async convertServerSide(webmBlob) {
+        console.log('Attempting server-side MP4 conversion...');
+        
+        const formData = new FormData();
+        formData.append('file', webmBlob, 'recording.webm');
+        
+        const response = await fetch('/upload-video', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            throw new Error('Server conversion failed: ' + response.statusText);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.ok) {
+            throw new Error('Server conversion failed: ' + (result.error || 'Unknown error'));
+        }
+        
+        // Download the converted file
+        const videoResponse = await fetch(result.path);
+        if (!videoResponse.ok) {
+            throw new Error('Failed to download converted video');
+        }
+        
+        const mp4Blob = await videoResponse.blob();
+        
+        if (result.converted) {
+            console.log('Server-side conversion successful');
+        } else {
+            console.log('Server returned original file (ffmpeg not available)');
+        }
+        
+        return mp4Blob;
     },
 
     async encodeMp3(samples, sampleRate) {
