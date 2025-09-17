@@ -159,6 +159,21 @@ body {
     animation: pulse-danger 2s infinite;
 }
 
+.btn-secondary {
+    background: var(--border);
+    color: var(--text);
+    font-size: 0.9rem;
+    padding: 0.5rem 1rem;
+    min-width: auto;
+    text-transform: none;
+    font-weight: normal;
+}
+
+.btn-secondary:hover {
+    background: var(--text-muted);
+    color: var(--bg);
+}
+
 /* Preview and visualizer */
 .preview {
     width: 100%;
