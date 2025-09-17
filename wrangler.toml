@@ -1,0 +1,33 @@
+name = "screen-recorder-worker"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# R2 bucket binding for file storage
+[[r2_buckets]]
+binding = "RECORDINGS_BUCKET"
+bucket_name = "screen-recorder-files"
+preview_bucket_name = "screen-recorder-files-preview"
+
+# Environment variables
+[env.production.vars]
+ENVIRONMENT = "production"
+
+[env.staging.vars]
+ENVIRONMENT = "staging"
+
+# KV namespace for metadata (optional)
+# [[kv_namespaces]]
+# binding = "METADATA"
+# id = "your-kv-namespace-id"
+# preview_id = "your-preview-kv-namespace-id"
+
+# Custom domains (configure after deployment)
+# [env.production]
+# routes = [
+#   { pattern = "api.yourscreen-recorder.com/*", custom_domain = true }
+# ]
+
+# Development configuration
+[env.dev]
+vars = { ENVIRONMENT = "development" }
