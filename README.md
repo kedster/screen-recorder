@@ -12,13 +12,46 @@ Modern web app to record screen video and audio with a sleek UI and real-time fe
 
 ## Features
 
-- Records screen with audio, converts to MP4 with intelligent fallback system
-- Records tab/mic audio, converts to MP3 in-browser
-- Modern UI with dark mode support
-- Real-time audio visualization
-- Recording timer and status indicators
-- Live video preview for screen recording
-- Toast notifications for better feedback
+- **🎥 Screen Recording**: Capture screen with audio → MP4 via reliable backend processing
+- **🎙️ Audio Recording**: Record tab/mic audio → MP3 with in-browser conversion
+- **⚡ Backend Processing**: Cloudflare Worker handles video encoding and storage reliably
+- **📦 Chunked Uploads**: Large file support with resumable uploads and automatic retry
+- **🎨 Overlay Effects**: Add frames, labels, and icon overlays to recordings
+- **🌓 Dark/Light Theme**: Modern UI with theme switching
+- **📊 Real-time Visualization**: Audio waveform visualization during recording
+- **⏱️ Recording Timer**: Live timer and status indicators
+- **🎬 Live Preview**: Video preview for screen recording
+- **🔔 Smart Notifications**: Toast notifications with detailed feedback
+- **💾 Hybrid Storage**: Local IndexedDB + Cloud R2 storage with seamless downloads
+- **🔒 Privacy First**: No external services, runs on your Cloudflare infrastructure
+
+## Backend Processing System
+
+### Overview
+The app now features a robust **Cloudflare Worker backend** that handles video processing reliably, eliminating frontend crashes and failures that were common with large recordings.
+
+### Key Improvements
+- **Chunked Uploads**: Large videos are split into manageable chunks (1MB each) and uploaded progressively
+- **Resumable Uploads**: Network interruptions don't lose progress - uploads can resume from where they left off  
+- **Reliable Processing**: Heavy video encoding moved from browser to Worker backend
+- **Smart Upload**: Automatically chooses optimal upload method based on file size
+- **Progress Tracking**: Real-time upload progress with detailed chunk-level status
+- **Automatic Fallback**: If backend is unavailable, gracefully falls back to local processing
+
+### Technical Benefits
+- **Eliminates Memory Issues**: No more browser crashes from large video processing
+- **Network Resilience**: Chunked uploads handle poor network conditions  
+- **Scalable**: Worker auto-scaling handles multiple concurrent uploads
+- **Consistent**: Server-side processing guarantees reliable results
+- **Future-Ready**: Foundation for advanced features like real-time transcoding
+
+### User Experience
+- **Faster Uploads**: Chunked uploads with progress tracking
+- **Fewer Failures**: Backend processing eliminates most crash scenarios
+- **Better Feedback**: Detailed status updates and error messages
+- **Seamless Downloads**: Files available from both local storage and cloud
+
+For technical implementation details, see [BACKEND_IMPLEMENTATION.md](./BACKEND_IMPLEMENTATION.md).
 
 ## Setup
 
