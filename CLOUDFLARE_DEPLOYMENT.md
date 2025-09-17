@@ -21,6 +21,12 @@ This guide walks you through deploying the Screen Recorder app to Cloudflare Pag
 
 ### 1. Prerequisites
 ```bash
+# Ensure Node.js v20+ is installed (required for Wrangler)
+node --version  # Should show v20.0.0 or higher
+
+# If using Node.js v18 or older, update first:
+# nvm install 20 && nvm use 20
+
 # Install Wrangler CLI globally
 npm install -g wrangler
 

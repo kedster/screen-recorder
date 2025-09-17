@@ -3,6 +3,24 @@
 
 echo "🔍 Verifying Cloudflare configuration..."
 
+# Check Node.js version (required for Wrangler)
+if ! command -v node &> /dev/null; then
+    echo "❌ Node.js not found. Please install Node.js v20+ from https://nodejs.org"
+    exit 1
+fi
+
+NODE_VERSION=$(node --version | sed 's/v//')
+MAJOR_VERSION=$(echo $NODE_VERSION | cut -d. -f1)
+
+if [ "$MAJOR_VERSION" -lt 20 ]; then
+    echo "❌ Node.js v$NODE_VERSION found, but Wrangler requires v20+. Please update:"
+    echo "   Using nvm: nvm install 20 && nvm use 20"
+    echo "   Or download from: https://nodejs.org"
+    exit 1
+fi
+
+echo "✅ Node.js v$NODE_VERSION (meets Wrangler v20+ requirement)"
+
 # Check if wrangler is installed
 if ! command -v wrangler &> /dev/null; then
     echo "❌ Wrangler CLI not found. Install with: npm install -g wrangler"

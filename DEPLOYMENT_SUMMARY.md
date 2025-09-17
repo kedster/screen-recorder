@@ -25,6 +25,12 @@ Your Screen Recorder app is now ready for Cloudflare deployment! Here's what has
 
 ### 1. Install Wrangler CLI
 ```bash
+# Ensure Node.js v20+ (required for Wrangler)
+node --version  # Should show v20.0.0 or higher
+
+# Update Node.js if needed:
+# nvm install 20 && nvm use 20
+
 npm install -g wrangler
 wrangler login
 ```

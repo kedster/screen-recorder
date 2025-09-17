@@ -77,12 +77,31 @@ This app can be deployed to Cloudflare using both Cloudflare Pages (frontend) an
 
 ### Prerequisites
 
-1. **Cloudflare account** with Pages and Workers enabled
-2. **Wrangler CLI** installed globally:
+1. **Node.js v20.0.0 or higher** - Wrangler requires Node.js v20+
+   ```bash
+   node --version  # Should show v20.0.0 or higher
+   
+   # Quick compatibility check
+   ./scripts/check-node-compatibility.sh
+   ```
+   
+   If using an older version, update using:
+   ```bash
+   # Using nvm (recommended)
+   nvm install 20
+   nvm use 20
+   
+   # Or download from https://nodejs.org
+   ```
+
+2. **Cloudflare account** with Pages and Workers enabled
+
+3. **Wrangler CLI** installed globally:
    ```bash
    npm install -g wrangler
    ```
-3. **Authenticate with Cloudflare**:
+   
+4. **Authenticate with Cloudflare**:
    ```bash
    wrangler login
    ```
@@ -191,8 +210,22 @@ npm run cf:dev:pages
 
 ### Troubleshooting
 
-1. **Worker not accessible**: Check domain in `_redirects` matches your deployed Worker URL
-2. **Upload failures**: Verify R2 bucket exists and Worker has proper bindings
-3. **CORS errors**: Ensure Worker URL is correctly set in environment variables
+1. **Node.js version errors**: If you see "Wrangler requires at least Node.js v20.0.0" error:
+   ```bash
+   # Check your Node.js version
+   node --version
+   
+   # Run compatibility check
+   ./scripts/check-node-compatibility.sh
+   
+   # Update Node.js if needed
+   nvm install 20 && nvm use 20
+   ```
+
+2. **Worker not accessible**: Check domain in `_redirects` matches your deployed Worker URL
+
+3. **Upload failures**: Verify R2 bucket exists and Worker has proper bindings
+
+4. **CORS errors**: Ensure Worker URL is correctly set in environment variables
 
 For more details, see [Cloudflare Pages docs](https://developers.cloudflare.com/pages/) and [Workers docs](https://developers.cloudflare.com/workers/).
