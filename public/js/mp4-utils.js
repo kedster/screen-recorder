@@ -20,7 +20,7 @@ export const mp4Utils = {
                 console.error('Both client and server conversion failed:', serverError);
                 // Return original blob as fallback
                 console.log('Returning original WebM file');
-                throw new Error('MP4 conversion failed: ' + serverError.message);
+                return webmBlob;
             }
         }
     },
