@@ -672,6 +672,61 @@ iconOpacity.addEventListener('input', () => {
     updatePreview();
 });
 
+// System diagnostics functionality
+document.getElementById('checkVersions').addEventListener('click', async () => {
+    const btn = document.getElementById('checkVersions');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking...';
+    btn.disabled = true;
+
+    try {
+        const { mp4Utils } = await import('./js/mp4-utils.js');
+        const versionInfo = await mp4Utils.checkVersions();
+        
+        // Display results in a formatted way
+        const results = `
+=== SYSTEM DIAGNOSTICS ===
+
+🖥️  SERVER ENVIRONMENT:
+• Node.js: ${versionInfo.server.nodejs}
+• Platform: ${versionInfo.server.platform} (${versionInfo.server.arch})
+• FFmpeg: ${versionInfo.server.ffmpeg.available ? '✅ ' + versionInfo.server.ffmpeg.version : '❌ Not available'}
+• FFprobe: ${versionInfo.server.ffprobe.available ? '✅ ' + versionInfo.server.ffprobe.version : '❌ Not available'}
+
+🌐 BROWSER CAPABILITIES:
+• WebRTC: ${versionInfo.client.webRTC ? '✅' : '❌'}
+• Screen Sharing: ${versionInfo.client.getDisplayMedia ? '✅' : '❌'}
+• Media Recording: ${versionInfo.client.mediaRecorder ? '✅' : '❌'}
+• Web Workers: ${versionInfo.client.worker ? '✅' : '❌'}
+• IndexedDB: ${versionInfo.client.indexedDB ? '✅' : '❌'}
+
+📼 SUPPORTED FORMATS:
+${versionInfo.client.supportedMimeTypes.map(type => `• ${type}`).join('\n')}
+
+🎯 MP4 CONVERSION STATUS:
+• Client-side: ❌ Disabled (fallback stub)
+• Server-side: ${versionInfo.server.ffmpeg.available ? '✅ Available' : '❌ FFmpeg not installed'}
+
+📊 USER AGENT:
+${versionInfo.client.userAgent}
+
+Generated: ${versionInfo.timestamp}
+        `.trim();
+
+        console.log(results);
+        alert(results);
+        showToast('System diagnostics completed - check console for details', 'info');
+        
+    } catch (error) {
+        console.error('Diagnostics failed:', error);
+        alert(`Diagnostics failed: ${error.message}`);
+        showToast('Diagnostics failed: ' + error.message, 'error');
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+});
+
 // Debug helper
 window.checkRecordingState = () => ({
     mediaRecorder: recordingUtils.mediaRecorder?.state,

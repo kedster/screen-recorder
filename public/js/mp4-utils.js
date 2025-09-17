@@ -162,7 +162,10 @@ export const mp4Utils = {
         if (result.converted) {
             console.log('Server-side conversion successful');
         } else {
-            console.log('Server returned original file (ffmpeg not available)');
+            console.log('Server returned original file:', result.error || 'ffmpeg not available');
+            if (result.error) {
+                throw new Error(result.error);
+            }
         }
         
         return mp4Blob;
@@ -211,6 +214,58 @@ export const mp4Utils = {
             script.onload = () => setTimeout(resolve, 50);
             script.onerror = reject;
             document.head.appendChild(script);
+        });
+    },
+
+    // Version checking and diagnostics
+    async checkVersions() {
+        try {
+            const response = await fetch('/api/versions');
+            if (!response.ok) {
+                throw new Error('Failed to fetch version info');
+            }
+            const serverVersions = await response.json();
+            
+            const clientInfo = {
+                userAgent: navigator.userAgent,
+                webRTC: !!navigator.mediaDevices,
+                getDisplayMedia: !!navigator.mediaDevices?.getDisplayMedia,
+                mediaRecorder: !!window.MediaRecorder,
+                worker: !!window.Worker,
+                indexedDB: !!window.indexedDB,
+                supportedMimeTypes: this.getSupportedMimeTypes()
+            };
+            
+            return {
+                server: serverVersions,
+                client: clientInfo,
+                timestamp: new Date().toISOString()
+            };
+        } catch (error) {
+            console.error('Version check failed:', error);
+            throw error;
+        }
+    },
+
+    getSupportedMimeTypes() {
+        const types = [
+            'video/webm',
+            'video/webm;codecs=vp8',
+            'video/webm;codecs=vp9',
+            'video/webm;codecs=h264',
+            'video/mp4',
+            'video/mp4;codecs=h264',
+            'audio/webm',
+            'audio/webm;codecs=opus',
+            'audio/mp4'
+        ];
+        
+        return types.filter(type => {
+            try {
+                return MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(type);
+            } catch (e) {
+                return false;
+            }
         });
     }
 };
