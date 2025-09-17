@@ -20,6 +20,10 @@ Modern web app to record screen video and audio with a sleek UI and real-time fe
 - Live video preview for screen recording
 - Toast notifications for better feedback
 
+## Requirements
+
+- Node.js v20.0.0 or higher
+
 ## Setup
 
 1. Install dependencies:
