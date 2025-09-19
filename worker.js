@@ -25,6 +25,18 @@ export default {
 
     try {
       // Route handlers
+      if (pathname === '/' && request.method === 'GET') {
+        // Health check endpoint
+        return new Response(JSON.stringify({ 
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+          worker: 'screen-recorder-worker',
+          version: '1.0.0'
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      
       if (pathname === '/upload' && request.method === 'POST') {
         return await handleAudioUpload(request, env, corsHeaders);
       }
@@ -38,9 +50,18 @@ export default {
       }
 
       // Default 404 response
-      return new Response('Not Found', { 
+      return new Response(JSON.stringify({ 
+        error: 'Not Found',
+        message: `Endpoint ${pathname} not found`,
+        availableEndpoints: [
+          'GET /',
+          'POST /upload',
+          'POST /upload-video',
+          'GET /recordings/{filename}'
+        ]
+      }), { 
         status: 404,
-        headers: corsHeaders,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
 
     } catch (error) {

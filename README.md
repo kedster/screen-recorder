@@ -76,39 +76,53 @@ npm run cf:deploy:pages
 ./scripts/verify-cloudflare-setup.sh
 ```
 
+## MP4 Conversion System
+
+This app features a sophisticated **dual-layer MP4 conversion system**:
+
+### 🎯 Conversion Methods
+1. **Client-side Conversion** (Primary): Uses FFmpeg.wasm in a Web Worker for real-time browser-based conversion
+2. **Server-side Conversion** (Fallback): CloudConvert API integration for cloud-based processing  
+3. **WebM Fallback** (Final): Returns original WebM if both conversion methods fail
+
+### 🔧 Technical Details
+- **Client-side**: FFmpeg.wasm with H.264/AAC encoding, optimized for speed with progress tracking
+- **Server-side**: Optional CloudConvert API integration (requires API key)
+- **Smart Fallbacks**: Automatic fallback chain ensures users always get a working file
+- **Progress Feedback**: Real-time conversion progress with detailed status messages
+
+### ⚡ Performance Features
+- **Lazy Loading**: FFmpeg.wasm loads on-demand to minimize initial page load
+- **Web Workers**: Non-blocking conversion that doesn't freeze the UI
+- **Optimized Settings**: Fast encoding presets for real-time conversion
+- **Memory Management**: Automatic cleanup of temporary files and workers
+
 ## Notes
 
 - Screen/tab capture requires Chrome with "Share audio" enabled
-- If lamejs fails to load, audio uploads as WebM
-- Without ffmpeg, screen recordings stay in WebM format
-- For better quality, ffmpeg converts WebM → MP4 server-side
+- Audio recordings convert to MP3 using lamejs (WebM fallback if unavailable)  
+- **NEW**: Enhanced MP4 conversion with FFmpeg.wasm for client-side processing
+- **NEW**: Cloudflare Workers integration for serverless backend
+- **NEW**: Smart fallback system ensures conversion always works
+- Users receive detailed feedback about conversion status and timing
 
-Server-side MP4 conversion:
-- The server will attempt to convert uploaded WebM video to MP4 using `ffmpeg` if it's installed and on PATH
-- If ffmpeg is not available, the original WebM will be kept
-- The conversion uses H.264 video and AAC audio codecs for maximum compatibility
-- Client-side conversion is attempted first, falling back to server-side if unavailable
-- Users receive clear feedback about conversion status through toast notifications
-
-Windows notes:
-- On Windows PowerShell you may see an execution policy error when running npm scripts. Run these commands in PowerShell to use npm:
-
-```powershell
-# temporarily allow node's npm wrapper to run this session
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass;
-npm install
-npm start
-```
-
-Alternatively run node directly:
-
-```powershell
-node server.js
-```
+Local server notes:
+- Traditional server setup supports FFmpeg command-line conversion
+- Cloudflare deployment uses browser-based and cloud API conversion
+- Both deployment methods provide full functionality
 
 ## Cloudflare Deployment
 
-This app can be deployed to Cloudflare using both Cloudflare Pages (frontend) and Cloudflare Workers (backend API) with R2 storage for file uploads.
+Deploy to **Cloudflare Pages + Workers** for a serverless, globally distributed app with enhanced MP4 conversion capabilities.
+
+### 🚀 Quick Deployment
+
+```bash
+# Run the automated deployment script
+./scripts/deploy-cloudflare.sh
+```
+
+### 📋 Manual Setup
 
 ### Prerequisites
 

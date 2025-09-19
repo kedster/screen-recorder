@@ -1,5 +1,9 @@
 # Redirects for Cloudflare Pages
 # Redirect API calls to the Cloudflare Worker
+# Replace 'youraccount' with your actual Cloudflare account subdomain
 /upload https://screen-recorder-worker.youraccount.workers.dev/upload 200
 /upload-video https://screen-recorder-worker.youraccount.workers.dev/upload-video 200
 /recordings/* https://screen-recorder-worker.youraccount.workers.dev/recordings/:splat 200
+
+# Health check endpoint
+/api/health https://screen-recorder-worker.youraccount.workers.dev/ 200
