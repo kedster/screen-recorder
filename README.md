@@ -1,79 +1,128 @@
 # Screen & Audio Recorder
 
-Modern web app to record screen video and audio with a sleek UI and real-time feedback:
+Modern web app to record screen video and audio with advanced MP4 conversion capabilities:
 
-- 🎥 Screen recording with audio → MP4
-- 🎙️ Audio capture (tab or mic) → MP3
+- 🎥 Screen recording with audio → MP4 (client-side and server-side conversion)
+- 🎙️ Audio capture (tab or mic) → MP3  
 - 🌓 Dark/light theme
-- 📊 Audio visualization
+- 📊 Audio visualization  
 - ⏱️ Recording timer
 - 🎬 Live video preview
-- 🔔 Toast notifications
+- 🔔 Smart toast notifications
+- ☁️ Cloudflare deployment ready
 
 ## Features
 
-- Records screen with audio, converts to MP4 with intelligent fallback system
-- Records tab/mic audio, converts to MP3 in-browser
-- Modern UI with dark mode support
-- Real-time audio visualization
-- Recording timer and status indicators
-- Live video preview for screen recording
-- Toast notifications for better feedback
+- **Advanced MP4 Conversion**: Intelligent conversion system with client-side FFmpeg.wasm and server-side fallback
+- **Multiple Deployment Options**: Works with local Node.js server or Cloudflare Workers + Pages
+- **Real-time Audio Processing**: Tab/mic audio recording with in-browser MP3 conversion
+- **Modern Responsive UI**: Dark mode support, live previews, and intuitive controls
+- **Smart Error Handling**: Graceful fallbacks when conversion services are unavailable
+- **Progress Feedback**: Real-time conversion progress and detailed status messages
 
-## Setup
+## Quick Start (Local)
 
 1. Install dependencies:
-```powershell
-# PowerShell (temporary execution policy for npm)
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass;
+```bash
 npm install
 ```
 
-2. Optional: Install ffmpeg for MP4 conversion
-- Download ffmpeg from ffmpeg.org
-- Add to PATH or copy ffmpeg.exe to a directory in PATH
-- Check installation: `ffmpeg -version`
-
-3. Start the server:
-```powershell
+2. Start the server:
+```bash
 npm start
 ```
 
-4. Open http://localhost:3000
+3. Open http://localhost:3000
+
+## Cloudflare Deployment
+
+For production deployment with serverless backend:
+
+### Prerequisites
+```bash
+# Install Wrangler CLI
+npm install -g wrangler
+
+# Authenticate with Cloudflare  
+wrangler login
+```
+
+### Deploy Worker (Backend)
+```bash
+# Create R2 storage bucket
+wrangler r2 bucket create screen-recorder-files
+
+# Deploy the worker
+npm run cf:deploy:worker
+```
+
+### Deploy Pages (Frontend) 
+```bash
+# Option 1: Direct deployment
+npm run cf:deploy:pages
+
+# Option 2: Connect Git repository (recommended)
+# Go to Cloudflare Dashboard → Pages → Connect Git
+```
+
+### Configuration
+1. Update `public/_redirects` with your worker URL
+2. Set environment variables in Pages dashboard:
+   - `WORKER_URL`: Your worker URL 
+   - `CLOUDCONVERT_API_KEY`: (Optional) For enhanced server-side conversion
+
+### Verification
+```bash
+./scripts/verify-cloudflare-setup.sh
+```
+
+## MP4 Conversion System
+
+This app features a sophisticated **dual-layer MP4 conversion system**:
+
+### 🎯 Conversion Methods
+1. **Client-side Conversion** (Primary): Uses FFmpeg.wasm in a Web Worker for real-time browser-based conversion
+2. **Server-side Conversion** (Fallback): CloudConvert API integration for cloud-based processing  
+3. **WebM Fallback** (Final): Returns original WebM if both conversion methods fail
+
+### 🔧 Technical Details
+- **Client-side**: FFmpeg.wasm with H.264/AAC encoding, optimized for speed with progress tracking
+- **Server-side**: Optional CloudConvert API integration (requires API key)
+- **Smart Fallbacks**: Automatic fallback chain ensures users always get a working file
+- **Progress Feedback**: Real-time conversion progress with detailed status messages
+
+### ⚡ Performance Features
+- **Lazy Loading**: FFmpeg.wasm loads on-demand to minimize initial page load
+- **Web Workers**: Non-blocking conversion that doesn't freeze the UI
+- **Optimized Settings**: Fast encoding presets for real-time conversion
+- **Memory Management**: Automatic cleanup of temporary files and workers
 
 ## Notes
 
 - Screen/tab capture requires Chrome with "Share audio" enabled
-- If lamejs fails to load, audio uploads as WebM
-- Without ffmpeg, screen recordings stay in WebM format
-- For better quality, ffmpeg converts WebM → MP4 server-side
+- Audio recordings convert to MP3 using lamejs (WebM fallback if unavailable)  
+- **NEW**: Enhanced MP4 conversion with FFmpeg.wasm for client-side processing
+- **NEW**: Cloudflare Workers integration for serverless backend
+- **NEW**: Smart fallback system ensures conversion always works
+- Users receive detailed feedback about conversion status and timing
 
-Server-side MP4 conversion:
-- The server will attempt to convert uploaded WebM video to MP4 using `ffmpeg` if it's installed and on PATH
-- If ffmpeg is not available, the original WebM will be kept
-- The conversion uses H.264 video and AAC audio codecs for maximum compatibility
-- Client-side conversion is attempted first, falling back to server-side if unavailable
-- Users receive clear feedback about conversion status through toast notifications
-
-Windows notes:
-- On Windows PowerShell you may see an execution policy error when running npm scripts. Run these commands in PowerShell to use npm:
-
-```powershell
-# temporarily allow node's npm wrapper to run this session
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass;
-npm install
-npm start
-```
-
-Alternatively run node directly:
-
-```powershell
-node server.js
-```
+Local server notes:
+- Traditional server setup supports FFmpeg command-line conversion
+- Cloudflare deployment uses browser-based and cloud API conversion
+- Both deployment methods provide full functionality
 
 ## Cloudflare Deployment
 
-This app can be deployed to Cloudflare using both Cloudflare Pages (frontend) and Cloudflare Workers (backend API) with R2 storage for file uploads.
+Deploy to **Cloudflare Pages + Workers** for a serverless, globally distributed app with enhanced MP4 conversion capabilities.
+
+### 🚀 Quick Deployment
+
+```bash
+# Run the automated deployment script
+./scripts/deploy-cloudflare.sh
+```
+
+### 📋 Manual Setup
 
 ### Prerequisites
 

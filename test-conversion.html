@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MP4 Conversion Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .test-section { border: 1px solid #ccc; padding: 20px; margin: 20px 0; border-radius: 8px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        button { padding: 10px 20px; margin: 10px; cursor: pointer; }
+        #results { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>🎥 MP4 Conversion Test Suite</h1>
+    
+    <div class="test-section info">
+        <h3>Test Overview</h3>
+        <p>This page tests the MP4 conversion capabilities implemented in the Screen Recorder app:</p>
+        <ul>
+            <li>Client-side conversion using FFmpeg.wasm</li>
+            <li>Server-side fallback handling</li>
+            <li>Error handling and user feedback</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h3>1. FFmpeg.wasm Loading Test</h3>
+        <button onclick="testFFmpegLoading()">Test FFmpeg.wasm Loading</button>
+        <div id="ffmpeg-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>2. Worker Creation Test</h3>
+        <button onclick="testWorkerCreation()">Test Worker Creation</button>
+        <div id="worker-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>3. MP4 Utils Import Test</h3>
+        <button onclick="testMp4Utils()">Test MP4 Utils Import</button>
+        <div id="mp4utils-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>4. Server API Test</h3>
+        <button onclick="testServerAPI()">Test Server API</button>
+        <div id="server-result"></div>
+    </div>
+
+    <script>
+        // Test 1: FFmpeg.wasm Loading
+        async function testFFmpegLoading() {
+            const resultDiv = document.getElementById('ffmpeg-result');
+            resultDiv.innerHTML = '🔄 Testing FFmpeg.wasm loading...';
+            
+            try {
+                const script = document.createElement('script');
+                script.src = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js';
+                
+                await new Promise((resolve, reject) => {
+                    script.onload = resolve;
+                    script.onerror = reject;
+                    document.head.appendChild(script);
+                });
+                
+                if (typeof FFmpegWASM !== 'undefined') {
+                    resultDiv.innerHTML = '✅ FFmpeg.wasm script loaded successfully';
+                    resultDiv.parentElement.classList.add('success');
+                } else {
+                    throw new Error('FFmpegWASM not found in global scope');
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '❌ FFmpeg.wasm loading failed: ' + error.message;
+                resultDiv.parentElement.classList.add('error');
+            }
+        }
+
+        // Test 2: Worker Creation
+        async function testWorkerCreation() {
+            const resultDiv = document.getElementById('worker-result');
+            resultDiv.innerHTML = '🔄 Testing worker creation...';
+            
+            try {
+                const workerUrl = './js/ffmpeg-worker-mp4.js';
+                const worker = new Worker(workerUrl);
+                
+                const testResult = await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        worker.terminate();
+                        reject(new Error('Worker timeout'));
+                    }, 5000);
+                    
+                    worker.onmessage = (e) => {
+                        clearTimeout(timeout);
+                        worker.terminate();
+                        resolve(e.data);
+                    };
+                    
+                    worker.onerror = (error) => {
+                        clearTimeout(timeout);
+                        worker.terminate();
+                        reject(error);
+                    };
+                });
+                
+                resultDiv.innerHTML = '✅ Worker created and responded: ' + JSON.stringify(testResult);
+                resultDiv.parentElement.classList.add('success');
+            } catch (error) {
+                resultDiv.innerHTML = '❌ Worker creation failed: ' + error.message;
+                resultDiv.parentElement.classList.add('error');
+            }
+        }
+
+        // Test 3: MP4 Utils Import
+        async function testMp4Utils() {
+            const resultDiv = document.getElementById('mp4utils-result');
+            resultDiv.innerHTML = '🔄 Testing MP4 utils import...';
+            
+            try {
+                const { mp4Utils } = await import('./js/mp4-utils.js');
+                
+                if (typeof mp4Utils.convertToMp4 === 'function') {
+                    resultDiv.innerHTML = '✅ MP4 utils imported successfully with convertToMp4 function';
+                    resultDiv.parentElement.classList.add('success');
+                } else {
+                    throw new Error('convertToMp4 function not found');
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '❌ MP4 utils import failed: ' + error.message;
+                resultDiv.parentElement.classList.add('error');
+            }
+        }
+
+        // Test 4: Server API
+        async function testServerAPI() {
+            const resultDiv = document.getElementById('server-result');
+            resultDiv.innerHTML = '🔄 Testing server API...';
+            
+            try {
+                // Test if we're running on the same server
+                const response = await fetch('/recordings/nonexistent.mp4');
+                
+                if (response.status === 404) {
+                    resultDiv.innerHTML = '✅ Server API is responding (404 for nonexistent file is expected)';
+                    resultDiv.parentElement.classList.add('success');
+                } else if (response.ok) {
+                    resultDiv.innerHTML = '✅ Server API is responding';
+                    resultDiv.parentElement.classList.add('success');
+                } else {
+                    throw new Error('Server responded with status: ' + response.status);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '⚠️ Server API test inconclusive: ' + error.message + ' (May be running on different server)';
+                resultDiv.parentElement.classList.add('info');
+            }
+        }
+
+        // Run initial compatibility check
+        window.addEventListener('load', () => {
+            const info = document.createElement('div');
+            info.className = 'test-section info';
+            info.innerHTML = `
+                <h3>Browser Compatibility</h3>
+                <ul>
+                    <li>WebRTC: ${navigator.mediaDevices ? '✅ Supported' : '❌ Not supported'}</li>
+                    <li>Web Workers: ${typeof Worker !== 'undefined' ? '✅ Supported' : '❌ Not supported'}</li>
+                    <li>MediaRecorder: ${typeof MediaRecorder !== 'undefined' ? '✅ Supported' : '❌ Not supported'}</li>
+                    <li>IndexedDB: ${typeof indexedDB !== 'undefined' ? '✅ Supported' : '❌ Not supported'}</li>
+                </ul>
+            `;
+            document.body.appendChild(info);
+        });
+    </script>
+</body>
+</html>

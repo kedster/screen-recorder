@@ -456,16 +456,57 @@ async function onScreenStop() {
         
         // Convert to MP4 if enabled
         if (document.getElementById('convertToMp4').checked) {
-            setStatus('Converting to MP4...');
-            showToast('Converting to MP4...', 'info');
+            setStatus('Converting to MP4... This may take a moment');
+            showToast('Converting to MP4... Please wait', 'info');
+            
+            // Add progress indicator
+            const progressToast = document.createElement('div');
+            progressToast.className = 'toast toast-info';
+            progressToast.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <span>Converting to MP4...</span>
+                </div>
+            `;
+            document.body.appendChild(progressToast);
+            
             try {
                 console.log('Converting to MP4...');
+                const startTime = Date.now();
                 finalBlob = await mp4Utils.convertToMp4(finalBlob);
-                console.log('MP4 conversion successful, size:', finalBlob.size);
-                showToast('MP4 conversion successful', 'success');
+                const conversionTime = ((Date.now() - startTime) / 1000).toFixed(1);
+                
+                console.log('MP4 conversion successful, size:', finalBlob.size, 'time:', conversionTime + 's');
+                
+                // Remove progress indicator
+                document.body.removeChild(progressToast);
+                
+                // Show success message with timing info
+                showToast(`MP4 conversion successful (${conversionTime}s)`, 'success');
+                
+                // Update file extension display if needed
+                if (finalBlob.type.includes('mp4')) {
+                    setStatus('MP4 conversion completed - Ready to save');
+                }
+                
             } catch (convErr) {
                 console.error('MP4 conversion failed:', convErr);
-                showToast('MP4 conversion failed: ' + convErr.message + ' - Saving as WebM', 'error');
+                
+                // Remove progress indicator
+                if (document.body.contains(progressToast)) {
+                    document.body.removeChild(progressToast);
+                }
+                
+                // Provide detailed error feedback
+                let errorMessage = convErr.message;
+                if (errorMessage.includes('Client-side') && errorMessage.includes('Server')) {
+                    errorMessage = 'Both client and server conversion failed - Saved as WebM format';
+                } else if (errorMessage.includes('not available') || errorMessage.includes('not configured')) {
+                    errorMessage = 'MP4 conversion service unavailable - Saved as WebM format';
+                }
+                
+                showToast(`MP4 conversion failed: ${errorMessage}`, 'warning');
+                setStatus('MP4 conversion failed - Saved as WebM');
                 // finalBlob remains as WebM
             }
         }

@@ -25,6 +25,18 @@ export default {
 
     try {
       // Route handlers
+      if (pathname === '/' && request.method === 'GET') {
+        // Health check endpoint
+        return new Response(JSON.stringify({ 
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+          worker: 'screen-recorder-worker',
+          version: '1.0.0'
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      
       if (pathname === '/upload' && request.method === 'POST') {
         return await handleAudioUpload(request, env, corsHeaders);
       }
@@ -38,9 +50,18 @@ export default {
       }
 
       // Default 404 response
-      return new Response('Not Found', { 
+      return new Response(JSON.stringify({ 
+        error: 'Not Found',
+        message: `Endpoint ${pathname} not found`,
+        availableEndpoints: [
+          'GET /',
+          'POST /upload',
+          'POST /upload-video',
+          'GET /recordings/{filename}'
+        ]
+      }), { 
         status: 404,
-        headers: corsHeaders,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
 
     } catch (error) {
@@ -132,17 +153,45 @@ async function handleVideoUpload(request, env, corsHeaders) {
       },
     });
 
-    // For now, return the original file since Cloudflare Workers
-    // don't have ffmpeg built-in. In production, you could:
-    // 1. Use a third-party conversion service
-    // 2. Trigger a Durable Object for conversion
-    // 3. Use client-side conversion only
-    
+    console.log(`Stored WebM file: ${originalName} (${fileBuffer.byteLength} bytes)`);
+
+    // Attempt server-side conversion using online conversion service
+    let conversionResult = null;
+    let conversionError = null;
+
+    try {
+      if (env.CLOUDCONVERT_API_KEY) {
+        conversionResult = await convertVideoWithCloudConvert(fileBuffer, originalName, mp4Name, env);
+      } else {
+        console.log('CloudConvert API key not configured, skipping server-side conversion');
+        conversionError = 'Server-side conversion not configured';
+      }
+    } catch (error) {
+      console.error('Server-side conversion failed:', error);
+      conversionError = error.message;
+    }
+
+    // If conversion was successful, return the MP4 path
+    if (conversionResult && conversionResult.success) {
+      return new Response(JSON.stringify({ 
+        ok: true, 
+        path: `/recordings/${mp4Name}`,
+        originalPath: `/recordings/${originalName}`,
+        converted: true,
+        conversionTime: conversionResult.duration,
+        note: 'Successfully converted WebM to MP4'
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // If conversion failed, return original file with clear messaging
     return new Response(JSON.stringify({ 
       ok: true, 
       path: `/recordings/${originalName}`,
       converted: false,
-      note: 'Server-side video conversion not available in Cloudflare Workers. Consider client-side conversion.'
+      error: conversionError || 'Server-side conversion not available',
+      note: 'Original WebM file stored. Client-side conversion recommended for MP4 format.'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -153,6 +202,129 @@ async function handleVideoUpload(request, env, corsHeaders) {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
+  }
+}
+
+/**
+ * Convert video using CloudConvert API
+ * This is an optional enhancement that requires API key configuration
+ */
+async function convertVideoWithCloudConvert(fileBuffer, originalName, mp4Name, env) {
+  const startTime = Date.now();
+  
+  try {
+    const apiKey = env.CLOUDCONVERT_API_KEY;
+    const baseUrl = 'https://api.cloudconvert.com/v2';
+    
+    // Step 1: Create a job
+    const jobResponse = await fetch(`${baseUrl}/jobs`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        tasks: {
+          'import-file': {
+            operation: 'import/upload'
+          },
+          'convert-video': {
+            operation: 'convert',
+            input: 'import-file',
+            output_format: 'mp4',
+            options: {
+              video_codec: 'h264',
+              audio_codec: 'aac',
+              preset: 'web'
+            }
+          },
+          'export-file': {
+            operation: 'export/url',
+            input: 'convert-video'
+          }
+        }
+      })
+    });
+    
+    if (!jobResponse.ok) {
+      throw new Error(`CloudConvert job creation failed: ${jobResponse.status}`);
+    }
+    
+    const job = await jobResponse.json();
+    
+    // Step 2: Upload the file
+    const importTask = job.data.tasks.find(t => t.name === 'import-file');
+    const uploadResponse = await fetch(importTask.result.form.url, {
+      method: 'POST',
+      body: (() => {
+        const formData = new FormData();
+        Object.entries(importTask.result.form.parameters).forEach(([key, value]) => {
+          formData.append(key, value);
+        });
+        formData.append('file', new Blob([fileBuffer], { type: 'video/webm' }), originalName);
+        return formData;
+      })()
+    });
+    
+    if (!uploadResponse.ok) {
+      throw new Error(`CloudConvert upload failed: ${uploadResponse.status}`);
+    }
+    
+    // Step 3: Wait for conversion to complete (with timeout)
+    const maxWaitTime = 120000; // 2 minutes
+    let elapsed = 0;
+    
+    while (elapsed < maxWaitTime) {
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+      elapsed += 2000;
+      
+      const statusResponse = await fetch(`${baseUrl}/jobs/${job.data.id}`, {
+        headers: { 'Authorization': `Bearer ${apiKey}` }
+      });
+      
+      const status = await statusResponse.json();
+      
+      if (status.data.status === 'finished') {
+        // Step 4: Download the converted file
+        const exportTask = status.data.tasks.find(t => t.name === 'export-file');
+        const downloadUrl = exportTask.result.files[0].url;
+        
+        const downloadResponse = await fetch(downloadUrl);
+        if (!downloadResponse.ok) {
+          throw new Error(`Download failed: ${downloadResponse.status}`);
+        }
+        
+        const mp4Buffer = await downloadResponse.arrayBuffer();
+        
+        // Store the converted MP4 file
+        await env.RECORDINGS_BUCKET.put(mp4Name, mp4Buffer, {
+          httpMetadata: {
+            contentType: 'video/mp4',
+          },
+        });
+        
+        console.log(`Successfully converted and stored: ${mp4Name}`);
+        
+        return {
+          success: true,
+          duration: Date.now() - startTime
+        };
+      }
+      
+      if (status.data.status === 'error') {
+        throw new Error('CloudConvert job failed');
+      }
+    }
+    
+    throw new Error('CloudConvert conversion timeout');
+    
+  } catch (error) {
+    console.error('CloudConvert conversion error:', error);
+    return {
+      success: false,
+      error: error.message,
+      duration: Date.now() - startTime
+    };
   }
 }
 
