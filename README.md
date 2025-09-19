@@ -1,45 +1,80 @@
 # Screen & Audio Recorder
 
-Modern web app to record screen video and audio with a sleek UI and real-time feedback:
+Modern web app to record screen video and audio with advanced MP4 conversion capabilities:
 
-- 🎥 Screen recording with audio → MP4
-- 🎙️ Audio capture (tab or mic) → MP3
+- 🎥 Screen recording with audio → MP4 (client-side and server-side conversion)
+- 🎙️ Audio capture (tab or mic) → MP3  
 - 🌓 Dark/light theme
-- 📊 Audio visualization
+- 📊 Audio visualization  
 - ⏱️ Recording timer
 - 🎬 Live video preview
-- 🔔 Toast notifications
+- 🔔 Smart toast notifications
+- ☁️ Cloudflare deployment ready
 
 ## Features
 
-- Records screen with audio, converts to MP4 with intelligent fallback system
-- Records tab/mic audio, converts to MP3 in-browser
-- Modern UI with dark mode support
-- Real-time audio visualization
-- Recording timer and status indicators
-- Live video preview for screen recording
-- Toast notifications for better feedback
+- **Advanced MP4 Conversion**: Intelligent conversion system with client-side FFmpeg.wasm and server-side fallback
+- **Multiple Deployment Options**: Works with local Node.js server or Cloudflare Workers + Pages
+- **Real-time Audio Processing**: Tab/mic audio recording with in-browser MP3 conversion
+- **Modern Responsive UI**: Dark mode support, live previews, and intuitive controls
+- **Smart Error Handling**: Graceful fallbacks when conversion services are unavailable
+- **Progress Feedback**: Real-time conversion progress and detailed status messages
 
-## Setup
+## Quick Start (Local)
 
 1. Install dependencies:
-```powershell
-# PowerShell (temporary execution policy for npm)
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass;
+```bash
 npm install
 ```
 
-2. Optional: Install ffmpeg for MP4 conversion
-- Download ffmpeg from ffmpeg.org
-- Add to PATH or copy ffmpeg.exe to a directory in PATH
-- Check installation: `ffmpeg -version`
-
-3. Start the server:
-```powershell
+2. Start the server:
+```bash
 npm start
 ```
 
-4. Open http://localhost:3000
+3. Open http://localhost:3000
+
+## Cloudflare Deployment
+
+For production deployment with serverless backend:
+
+### Prerequisites
+```bash
+# Install Wrangler CLI
+npm install -g wrangler
+
+# Authenticate with Cloudflare  
+wrangler login
+```
+
+### Deploy Worker (Backend)
+```bash
+# Create R2 storage bucket
+wrangler r2 bucket create screen-recorder-files
+
+# Deploy the worker
+npm run cf:deploy:worker
+```
+
+### Deploy Pages (Frontend) 
+```bash
+# Option 1: Direct deployment
+npm run cf:deploy:pages
+
+# Option 2: Connect Git repository (recommended)
+# Go to Cloudflare Dashboard → Pages → Connect Git
+```
+
+### Configuration
+1. Update `public/_redirects` with your worker URL
+2. Set environment variables in Pages dashboard:
+   - `WORKER_URL`: Your worker URL 
+   - `CLOUDCONVERT_API_KEY`: (Optional) For enhanced server-side conversion
+
+### Verification
+```bash
+./scripts/verify-cloudflare-setup.sh
+```
 
 ## Notes
 

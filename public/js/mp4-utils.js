@@ -96,6 +96,14 @@ export const mp4Utils = {
                             break;
                         }
 
+                        case 'progress': {
+                            // Handle progress updates from FFmpeg worker
+                            const progress = e.data.progress || 0;
+                            console.log(`Client-side conversion progress: ${progress}%`);
+                            // We could emit this to the UI if needed
+                            break;
+                        }
+
                         case 'done': {
                             const memfs = e.data.MEMFS || e.data.data?.MEMFS;
                             const outFile = Array.isArray(memfs)
@@ -118,7 +126,7 @@ export const mp4Utils = {
                             break;
 
                         default:
-                            // Ignore other message types
+                            // Ignore other message types (like log messages)
                             break;
                     }
                 };
@@ -161,14 +169,35 @@ export const mp4Utils = {
         
         if (result.converted) {
             console.log('Server-side conversion successful');
+            // Return the converted MP4 blob
+            return mp4Blob;
         } else {
-            console.log('Server returned original file:', result.error || 'ffmpeg not available');
-            if (result.error) {
+            console.log('Server returned original file:', result.error || 'server conversion not available');
+            
+            // Check if we got a WebM file that we can potentially convert client-side
+            if (mp4Blob.type.includes('webm') || result.path.includes('.webm')) {
+                console.log('Server returned WebM file - attempting client-side conversion as fallback');
+                
+                try {
+                    // Attempt client-side conversion on the returned WebM blob
+                    const clientConvertedBlob = await this.convertClientSide(mp4Blob);
+                    console.log('Client-side fallback conversion successful');
+                    return clientConvertedBlob;
+                } catch (clientError) {
+                    console.warn('Client-side fallback also failed:', clientError.message);
+                    // Return the original WebM as final fallback
+                    return mp4Blob;
+                }
+            }
+            
+            // If server explicitly failed with an error, throw it
+            if (result.error && !result.error.includes('not available') && !result.error.includes('not configured')) {
                 throw new Error(result.error);
             }
+            
+            // Return whatever blob we got as fallback
+            return mp4Blob;
         }
-        
-        return mp4Blob;
     },
 
     async encodeMp3(samples, sampleRate) {
