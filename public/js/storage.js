@@ -27,7 +27,7 @@ export const storage = {
         });
     },
 
-    async saveRecording(blob, type, sessionId) {
+    async saveRecording(blob, type, sessionId, metadata = {}) {
         const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
         const recording = {
             id,
@@ -35,7 +35,8 @@ export const storage = {
             type,
             timestamp: Date.now(),
             downloaded: false,
-            sessionId
+            sessionId,
+            metadata // Store additional metadata like backend path, processing info, etc.
         };
         
         return new Promise((resolve, reject) => {

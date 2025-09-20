@@ -8,11 +8,11 @@ export default {
     const url = new URL(request.url);
     const { pathname } = url;
 
-    // CORS headers for all requests
+    // Enhanced CORS headers for all requests
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Content-Range, X-Upload-Id, X-Chunk-Index, X-Total-Chunks',
     };
 
     // Handle CORS preflight
@@ -31,6 +31,25 @@ export default {
       
       if (pathname === '/upload-video' && request.method === 'POST') {
         return await handleVideoUpload(request, env, corsHeaders);
+      }
+      
+      // New super function for chunked video processing
+      if (pathname === '/process-video-chunks' && request.method === 'POST') {
+        return await handleVideoChunkProcessing(request, env, corsHeaders);
+      }
+      
+      // Chunked upload endpoints
+      if (pathname === '/upload-chunk' && request.method === 'POST') {
+        return await handleChunkUpload(request, env, corsHeaders);
+      }
+      
+      if (pathname === '/finalize-upload' && request.method === 'POST') {
+        return await handleUploadFinalization(request, env, corsHeaders);
+      }
+      
+      // Upload status check for resumable uploads
+      if (pathname.startsWith('/upload-status/') && request.method === 'GET') {
+        return await handleUploadStatus(pathname, env, corsHeaders);
       }
       
       if (pathname.startsWith('/recordings/') && request.method === 'GET') {
@@ -184,6 +203,289 @@ async function handleFileDownload(pathname, env, corsHeaders) {
     return new Response('Internal Server Error', { 
       status: 500,
       headers: corsHeaders,
+    });
+  }
+}
+
+/**
+ * Handle chunked upload for video streaming
+ */
+async function handleChunkUpload(request, env, corsHeaders) {
+  try {
+    const formData = await request.formData();
+    const chunk = formData.get('chunk');
+    const uploadId = formData.get('uploadId');
+    const chunkIndex = parseInt(formData.get('chunkIndex'));
+    const totalChunks = parseInt(formData.get('totalChunks'));
+    
+    if (!chunk || !uploadId || isNaN(chunkIndex)) {
+      return new Response(JSON.stringify({ error: 'Missing required chunk data' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Store chunk in R2 with upload ID and chunk index
+    const chunkKey = `uploads/${uploadId}/chunk_${chunkIndex.toString().padStart(4, '0')}`;
+    const chunkBuffer = await chunk.arrayBuffer();
+    
+    await env.RECORDINGS_BUCKET.put(chunkKey, chunkBuffer, {
+      httpMetadata: {
+        contentType: 'application/octet-stream',
+      },
+      customMetadata: {
+        uploadId,
+        chunkIndex: chunkIndex.toString(),
+        totalChunks: totalChunks.toString(),
+        timestamp: Date.now().toString(),
+      },
+    });
+
+    // Store upload metadata for tracking
+    const metadataKey = `uploads/${uploadId}/metadata`;
+    const metadata = {
+      uploadId,
+      totalChunks,
+      chunksReceived: chunkIndex + 1, // This is simplified - in production you'd track all received chunks
+      lastChunkIndex: chunkIndex,
+      timestamp: Date.now(),
+    };
+    
+    await env.RECORDINGS_BUCKET.put(metadataKey, JSON.stringify(metadata), {
+      httpMetadata: {
+        contentType: 'application/json',
+      },
+    });
+
+    return new Response(JSON.stringify({ 
+      ok: true, 
+      uploadId,
+      chunkIndex,
+      received: true,
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+
+  } catch (error) {
+    console.error('Chunk upload error:', error);
+    return new Response(JSON.stringify({ error: 'Chunk upload failed' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+}
+
+/**
+ * Handle upload finalization and processing
+ */
+async function handleUploadFinalization(request, env, corsHeaders) {
+  try {
+    const data = await request.json();
+    const { uploadId, filename, options = {} } = data;
+    
+    if (!uploadId) {
+      return new Response(JSON.stringify({ error: 'Missing uploadId' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Get upload metadata
+    const metadataKey = `uploads/${uploadId}/metadata`;
+    const metadataObj = await env.RECORDINGS_BUCKET.get(metadataKey);
+    
+    if (!metadataObj) {
+      return new Response(JSON.stringify({ error: 'Upload not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const metadata = JSON.parse(await metadataObj.text());
+    
+    // Reconstruct file from chunks
+    const chunks = [];
+    for (let i = 0; i < metadata.totalChunks; i++) {
+      const chunkKey = `uploads/${uploadId}/chunk_${i.toString().padStart(4, '0')}`;
+      const chunkObj = await env.RECORDINGS_BUCKET.get(chunkKey);
+      
+      if (!chunkObj) {
+        return new Response(JSON.stringify({ error: `Missing chunk ${i}` }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      
+      chunks.push(new Uint8Array(await chunkObj.arrayBuffer()));
+    }
+
+    // Combine chunks
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const combinedBuffer = new Uint8Array(totalLength);
+    let offset = 0;
+    
+    for (const chunk of chunks) {
+      combinedBuffer.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    // Generate final filename
+    const timestamp = Date.now();
+    const finalFilename = filename || `recording_${timestamp}.webm`;
+    
+    // Store the final combined file
+    await env.RECORDINGS_BUCKET.put(`recordings/${finalFilename}`, combinedBuffer, {
+      httpMetadata: {
+        contentType: 'video/webm',
+      },
+      customMetadata: {
+        originalUploadId: uploadId,
+        processedAt: timestamp.toString(),
+        ...options,
+      },
+    });
+
+    // Clean up temporary chunks
+    try {
+      for (let i = 0; i < metadata.totalChunks; i++) {
+        const chunkKey = `uploads/${uploadId}/chunk_${i.toString().padStart(4, '0')}`;
+        await env.RECORDINGS_BUCKET.delete(chunkKey);
+      }
+      await env.RECORDINGS_BUCKET.delete(metadataKey);
+    } catch (cleanupError) {
+      console.warn('Cleanup error:', cleanupError);
+      // Don't fail the request for cleanup errors
+    }
+
+    return new Response(JSON.stringify({ 
+      ok: true, 
+      path: `/recordings/${finalFilename}`,
+      uploadId,
+      processed: true,
+      size: totalLength,
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+
+  } catch (error) {
+    console.error('Upload finalization error:', error);
+    return new Response(JSON.stringify({ error: 'Upload finalization failed' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+}
+
+/**
+ * Handle upload status check for resumable uploads
+ */
+async function handleUploadStatus(pathname, env, corsHeaders) {
+  try {
+    const uploadId = pathname.replace('/upload-status/', '');
+    
+    const metadataKey = `uploads/${uploadId}/metadata`;
+    const metadataObj = await env.RECORDINGS_BUCKET.get(metadataKey);
+    
+    if (!metadataObj) {
+      return new Response(JSON.stringify({ error: 'Upload not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const metadata = JSON.parse(await metadataObj.text());
+    
+    // Check which chunks exist
+    const receivedChunks = [];
+    for (let i = 0; i < metadata.totalChunks; i++) {
+      const chunkKey = `uploads/${uploadId}/chunk_${i.toString().padStart(4, '0')}`;
+      const chunkObj = await env.RECORDINGS_BUCKET.get(chunkKey);
+      if (chunkObj) {
+        receivedChunks.push(i);
+      }
+    }
+
+    return new Response(JSON.stringify({ 
+      uploadId,
+      totalChunks: metadata.totalChunks,
+      receivedChunks,
+      completedChunks: receivedChunks.length,
+      isComplete: receivedChunks.length === metadata.totalChunks,
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+
+  } catch (error) {
+    console.error('Upload status error:', error);
+    return new Response(JSON.stringify({ error: 'Upload status check failed' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+}
+
+/**
+ * Super function for video chunk processing - handles everything in one call
+ */
+async function handleVideoChunkProcessing(request, env, corsHeaders) {
+  try {
+    const formData = await request.formData();
+    const file = formData.get('file');
+    const filename = formData.get('filename');
+    const options = formData.get('options');
+    
+    if (!file) {
+      return new Response(JSON.stringify({ error: 'No file provided' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Parse options if provided
+    let processingOptions = {};
+    if (options) {
+      try {
+        processingOptions = JSON.parse(options);
+      } catch (e) {
+        console.warn('Invalid options JSON:', e);
+      }
+    }
+
+    // Generate filename
+    const timestamp = Date.now();
+    const finalFilename = filename || `recording_${timestamp}.webm`;
+    
+    // Process the video file
+    const fileBuffer = await file.arrayBuffer();
+    
+    // Store the processed file directly
+    await env.RECORDINGS_BUCKET.put(`recordings/${finalFilename}`, fileBuffer, {
+      httpMetadata: {
+        contentType: file.type || 'video/webm',
+      },
+      customMetadata: {
+        processedAt: timestamp.toString(),
+        processingOptions: JSON.stringify(processingOptions),
+        originalSize: fileBuffer.byteLength.toString(),
+      },
+    });
+
+    return new Response(JSON.stringify({ 
+      ok: true, 
+      path: `/recordings/${finalFilename}`,
+      processed: true,
+      size: fileBuffer.byteLength,
+      filename: finalFilename,
+      note: 'Video processed and stored successfully. Advanced processing (MP4 conversion, overlays) would require additional services.',
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+
+  } catch (error) {
+    console.error('Video processing error:', error);
+    return new Response(JSON.stringify({ error: 'Video processing failed' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 }

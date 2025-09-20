@@ -1,5 +1,19 @@
 # Redirects for Cloudflare Pages
 # Redirect API calls to the Cloudflare Worker
+
+# Audio uploads
 /upload https://screen-recorder-worker.youraccount.workers.dev/upload 200
+
+# Video uploads (original endpoint)
 /upload-video https://screen-recorder-worker.youraccount.workers.dev/upload-video 200
+
+# New chunked upload endpoints
+/upload-chunk https://screen-recorder-worker.youraccount.workers.dev/upload-chunk 200
+/finalize-upload https://screen-recorder-worker.youraccount.workers.dev/finalize-upload 200
+/upload-status/* https://screen-recorder-worker.youraccount.workers.dev/upload-status/:splat 200
+
+# New super function endpoint
+/process-video-chunks https://screen-recorder-worker.youraccount.workers.dev/process-video-chunks 200
+
+# File downloads
 /recordings/* https://screen-recorder-worker.youraccount.workers.dev/recordings/:splat 200
