@@ -185,9 +185,11 @@ async function startScreenCapture() {
             previewVideo.onloadedmetadata = () => previewVideo.play();
         }
 
+        const preferMP4 = document.getElementById('convertToMp4') ? document.getElementById('convertToMp4').checked : false;
         const mediaRecorder = recordingUtils.setupMediaRecorder(stream, 
             e => { if (e.data && e.data.size) recordingUtils.chunks.push(e.data); },
-            onScreenStop
+            onScreenStop,
+            preferMP4
         );
 
         mediaRecorder.start(1000); // Capture in 1-second chunks
@@ -449,65 +451,63 @@ async function onScreenStop() {
             throw new Error('No processed video data available');
         }
 
-        let finalBlob = new Blob(processedChunks, { type: 'video/webm' });
+        // Check recording format - use the format from MediaRecorder
+        let mimeType = recordingUtils.mediaRecorder?.mimeType || 'video/webm';
+        let finalBlob = new Blob(processedChunks, { type: mimeType });
+        let shouldConvertToMP4 = document.getElementById('convertToMp4').checked;
+        
         if (finalBlob.size === 0) {
             throw new Error('Processed video is empty');
         }
         
-        // Convert to MP4 if enabled
-        if (document.getElementById('convertToMp4').checked) {
-            setStatus('Converting to MP4... This may take a moment');
-            showToast('Converting to MP4... Please wait', 'info');
-            
-            // Add progress indicator
-            const progressToast = document.createElement('div');
-            progressToast.className = 'toast toast-info';
-            progressToast.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <i class="fas fa-spinner fa-spin"></i>
-                    <span>Converting to MP4...</span>
-                </div>
-            `;
-            document.body.appendChild(progressToast);
-            
+        console.log('Recording completed with format:', mimeType);
+        
+        // Handle MP4 format preference
+        if (shouldConvertToMP4) {
             try {
-                console.log('Converting to MP4...');
+                console.log('Checking MP4 handling...');
                 const startTime = Date.now();
-                finalBlob = await mp4Utils.convertToMp4(finalBlob);
-                const conversionTime = ((Date.now() - startTime) / 1000).toFixed(1);
                 
-                console.log('MP4 conversion successful, size:', finalBlob.size, 'time:', conversionTime + 's');
-                
-                // Remove progress indicator
-                document.body.removeChild(progressToast);
-                
-                // Show success message with timing info
-                showToast(`MP4 conversion successful (${conversionTime}s)`, 'success');
-                
-                // Update file extension display if needed
-                if (finalBlob.type.includes('mp4')) {
-                    setStatus('MP4 conversion completed - Ready to save');
+                // If we already have MP4, no conversion needed
+                if (mimeType.includes('mp4')) {
+                    showToast('MP4 format recorded successfully!', 'success');
+                    setStatus('MP4 recording completed - Saving file');
+                } else {
+                    // Check browser capabilities for future recordings
+                    const recordingConfig = mp4Utils.getRecordingConfig();
+                    if (recordingConfig.format === 'mp4') {
+                        showToast('Note: This browser supports direct MP4 recording for better quality', 'info');
+                    }
+                    
+                    finalBlob = await mp4Utils.convertToMp4(finalBlob);
+                    const conversionTime = ((Date.now() - startTime) / 1000).toFixed(1);
+                    
+                    if (finalBlob.type.includes('mp4')) {
+                        showToast(`MP4 conversion completed (${conversionTime}s)`, 'success');
+                        setStatus('MP4 conversion completed - Saving recording');
+                    } else {
+                        showToast('WebM format maintained - MP4 not available', 'info');
+                        setStatus('WebM recording ready - Saving file');
+                    }
                 }
                 
             } catch (convErr) {
-                console.error('MP4 conversion failed:', convErr);
+                console.log('MP4 handling result:', convErr.message);
                 
-                // Remove progress indicator
-                if (document.body.contains(progressToast)) {
-                    document.body.removeChild(progressToast);
+                if (convErr.message.includes('Use direct MP4 recording')) {
+                    showToast('Browser supports direct MP4 recording - WebM format saved', 'info');
+                } else {
+                    showToast(`Format info: ${convErr.message}`, 'info');
                 }
                 
-                // Provide detailed error feedback
-                let errorMessage = convErr.message;
-                if (errorMessage.includes('Client-side') && errorMessage.includes('Server')) {
-                    errorMessage = 'Both client and server conversion failed - Saved as WebM format';
-                } else if (errorMessage.includes('not available') || errorMessage.includes('not configured')) {
-                    errorMessage = 'MP4 conversion service unavailable - Saved as WebM format';
-                }
-                
-                showToast(`MP4 conversion failed: ${errorMessage}`, 'warning');
-                setStatus('MP4 conversion failed - Saved as WebM');
-                // finalBlob remains as WebM
+                setStatus('Recording saved - WebM format');
+            }
+        } else {
+            // Show format information
+            if (mimeType.includes('mp4')) {
+                showToast('MP4 recording completed', 'success');
+            } else {
+                showToast('WebM recording completed', 'success');
             }
         }
         
@@ -728,30 +728,30 @@ document.getElementById('checkVersions').addEventListener('click', async () => {
         const results = `
 === SYSTEM DIAGNOSTICS ===
 
-🖥️  SERVER ENVIRONMENT:
-• Node.js: ${versionInfo.server.nodejs}
-• Platform: ${versionInfo.server.platform} (${versionInfo.server.arch})
-• FFmpeg: ${versionInfo.server.ffmpeg.available ? '✅ ' + versionInfo.server.ffmpeg.version : '❌ Not available'}
-• FFprobe: ${versionInfo.server.ffprobe.available ? '✅ ' + versionInfo.server.ffprobe.version : '❌ Not available'}
-
 🌐 BROWSER CAPABILITIES:
-• WebRTC: ${versionInfo.client.webRTC ? '✅' : '❌'}
-• Screen Sharing: ${versionInfo.client.getDisplayMedia ? '✅' : '❌'}
-• Media Recording: ${versionInfo.client.mediaRecorder ? '✅' : '❌'}
-• Web Workers: ${versionInfo.client.worker ? '✅' : '❌'}
-• IndexedDB: ${versionInfo.client.indexedDB ? '✅' : '❌'}
+• WebRTC: ${versionInfo.browser.webRTC ? '✅' : '❌'}
+• MediaRecorder: ${versionInfo.browser.mediaRecorder ? '✅' : '❌'}
+• MP4 Support: ${versionInfo.browser.mp4Support ? '✅ Direct recording supported' : '❌ WebM only'}
+
+📼 RECORDING CONFIGURATION:
+• Format: ${versionInfo.browser.recommendedConfig.format.toUpperCase()}
+• Mime Type: ${versionInfo.browser.recommendedConfig.mimeType}
+• Message: ${versionInfo.browser.recommendedConfig.message}
+
+💡 RECOMMENDATIONS:
+• Video: ${versionInfo.recommendations.video}
+• Audio: ${versionInfo.recommendations.audio}
 
 📼 SUPPORTED FORMATS:
-${versionInfo.client.supportedMimeTypes.map(type => `• ${type}`).join('\n')}
+${versionInfo.supportedFormats.map(type => `• ${type}`).join('\n')}
 
-🎯 MP4 CONVERSION STATUS:
-• Client-side: ❌ Disabled (fallback stub)
-• Server-side: ${versionInfo.server.ffmpeg.available ? '✅ Available' : '❌ FFmpeg not installed'}
+🖥️  SERVER APPROACH:
+• ${versionInfo.server.note}
 
 📊 USER AGENT:
-${versionInfo.client.userAgent}
+${versionInfo.browser.userAgent}
 
-Generated: ${versionInfo.timestamp}
+Generated: ${new Date().toISOString()}
         `.trim();
 
         console.log(results);

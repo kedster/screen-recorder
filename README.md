@@ -76,40 +76,40 @@ npm run cf:deploy:pages
 ./scripts/verify-cloudflare-setup.sh
 ```
 
-## MP4 Conversion System
+## MP4 Recording System
 
-This app features a sophisticated **dual-layer MP4 conversion system**:
+This app features a **simplified, reliable MP4 recording approach**:
 
-### 🎯 Conversion Methods
-1. **Client-side Conversion** (Primary): Uses FFmpeg.wasm in a Web Worker for real-time browser-based conversion
-2. **Server-side Conversion** (Fallback): CloudConvert API integration for cloud-based processing  
-3. **WebM Fallback** (Final): Returns original WebM if both conversion methods fail
+### 🎯 Smart Recording Strategy
+1. **Direct MP4 Recording** (Primary): Uses browser's native MediaRecorder with MP4 mime types when supported
+2. **WebM Fallback** (Secondary): Falls back to WebM format when MP4 is not supported by the browser
+3. **No Post-Processing**: Avoids complex conversion by recording in the desired format from the start
 
-### 🔧 Technical Details
-- **Client-side**: FFmpeg.wasm with H.264/AAC encoding, optimized for speed with progress tracking
-- **Server-side**: Optional CloudConvert API integration (requires API key)
-- **Smart Fallbacks**: Automatic fallback chain ensures users always get a working file
-- **Progress Feedback**: Real-time conversion progress with detailed status messages
+### 🔧 Technical Implementation
+- **MediaRecorder Optimization**: Automatically detects and uses the best supported MP4 format
+- **Format Detection**: Tests multiple MP4 codecs (H.264/AAC, AVC1) for maximum compatibility
+- **Intelligent Fallback**: Gracefully falls back to high-quality WebM when MP4 is unavailable
+- **User Feedback**: Clear indication of recording format and browser capabilities
 
-### ⚡ Performance Features
-- **Lazy Loading**: FFmpeg.wasm loads on-demand to minimize initial page load
-- **Web Workers**: Non-blocking conversion that doesn't freeze the UI
-- **Optimized Settings**: Fast encoding presets for real-time conversion
-- **Memory Management**: Automatic cleanup of temporary files and workers
+### ⚡ Benefits
+- **Better Performance**: No CPU-intensive post-processing conversion
+- **Smaller File Sizes**: Direct recording produces optimized files
+- **Faster Results**: Immediate file availability without conversion delays
+- **Reliable Operation**: Eliminates conversion failures and compatibility issues
 
 ## Notes
 
 - Screen/tab capture requires Chrome with "Share audio" enabled
 - Audio recordings convert to MP3 using lamejs (WebM fallback if unavailable)  
-- **NEW**: Enhanced MP4 conversion with FFmpeg.wasm for client-side processing
-- **NEW**: Cloudflare Workers integration for serverless backend
-- **NEW**: Smart fallback system ensures conversion always works
-- Users receive detailed feedback about conversion status and timing
+- **NEW**: Smart MP4 recording uses browser's native MediaRecorder capabilities
+- **NEW**: Simplified Cloudflare Workers backend for serverless deployment
+- **NEW**: Direct format recording eliminates conversion delays and failures
+- Users receive clear feedback about recording format and browser capabilities
 
 Local server notes:
-- Traditional server setup supports FFmpeg command-line conversion
-- Cloudflare deployment uses browser-based and cloud API conversion
-- Both deployment methods provide full functionality
+- Traditional server setup works without any external dependencies
+- Cloudflare deployment provides global edge distribution
+- Both deployment methods use the same simplified recording approach
 
 ## Cloudflare Deployment
 

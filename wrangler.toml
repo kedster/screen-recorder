@@ -12,17 +12,13 @@ preview_bucket_name = "screen-recorder-files-preview"
 # Environment variables
 [env.production.vars]
 ENVIRONMENT = "production"
-# CLOUDCONVERT_API_KEY = "your-api-key-here"  # Uncomment and add your CloudConvert API key for MP4 conversion
 
 [env.staging.vars]
 ENVIRONMENT = "staging"
-# CLOUDCONVERT_API_KEY = "your-staging-api-key-here"  # Uncomment and add your CloudConvert API key for MP4 conversion
 
 # Development configuration
 [env.dev]
 vars = { ENVIRONMENT = "development" }
-# Uncomment the line below to enable MP4 conversion in development
-# CLOUDCONVERT_API_KEY = "your-dev-api-key-here"
 
 # KV namespace for metadata (optional)
 # [[kv_namespaces]]

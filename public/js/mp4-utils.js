@@ -1,205 +1,90 @@
-// MP4 conversion utilities
+// Simplified MP4 utilities focusing on MediaRecorder optimization
 export const mp4Utils = {
-    async convertToMp4(webmBlob) {
-        if (!webmBlob) {
-            throw new Error('No WebM blob provided');
-        }
+    // Get the best supported MP4 mime type for recording
+    getBestMP4MimeType() {
+        const mimeTypes = [
+            'video/mp4;codecs=h264,aac',
+            'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+            'video/mp4;codecs=h264',
+            'video/mp4;codecs=avc1',
+            'video/mp4'
+        ];
         
-        console.log('Attempting client-side MP4 conversion...');
-        
-        try {
-            // Try client-side conversion first
-            return await this.convertClientSide(webmBlob);
-        } catch (clientError) {
-            console.log('Client-side conversion failed, trying server-side:', clientError.message);
-            
-            try {
-                // Fall back to server-side conversion
-                return await this.convertServerSide(webmBlob);
-            } catch (serverError) {
-                console.error('Both client and server conversion failed:', serverError);
-                // Return original blob as fallback
-                console.log('Returning original WebM file');
-                throw new Error('MP4 conversion failed: ' + serverError.message);
+        for (const mimeType of mimeTypes) {
+            if (MediaRecorder.isTypeSupported(mimeType)) {
+                return mimeType;
             }
         }
+        
+        return null;
     },
 
-    async convertClientSide(webmBlob) {
-        // Try to use ffmpeg worker for client-side conversion
-        const workerUrl = new URL('./ffmpeg-worker-mp4.js', import.meta.url).href;
-        
-        return new Promise((resolve, reject) => {
-            let worker;
-            let timeoutId;
+    // Check if direct MP4 recording is supported
+    isDirectMP4Supported() {
+        return this.getBestMP4MimeType() !== null;
+    },
 
-            const cleanup = () => {
-                if (worker) {
-                    try {
-                        worker.terminate();
-                    } catch (e) {
-                        console.error('Error terminating worker:', e);
-                    }
-                }
-                if (timeoutId) {
-                    clearTimeout(timeoutId);
-                }
-                worker = null;
+    // Get fallback WebM mime type
+    getFallbackMimeType() {
+        const webmTypes = [
+            'video/webm;codecs=h264,opus',
+            'video/webm;codecs=vp9,opus',
+            'video/webm;codecs=vp8,opus',
+            'video/webm'
+        ];
+        
+        for (const mimeType of webmTypes) {
+            if (MediaRecorder.isTypeSupported(mimeType)) {
+                return mimeType;
+            }
+        }
+        
+        return 'video/webm'; // Basic fallback
+    },
+
+    // Get the recommended recording configuration
+    getRecordingConfig() {
+        const mp4MimeType = this.getBestMP4MimeType();
+        
+        if (mp4MimeType) {
+            return {
+                mimeType: mp4MimeType,
+                format: 'mp4',
+                needsConversion: false,
+                message: 'Recording directly in MP4 format'
             };
-
-            try {
-                worker = new Worker(workerUrl);
-                
-                // Set a timeout for the conversion
-                timeoutId = setTimeout(() => {
-                    cleanup();
-                    reject(new Error('Client-side conversion timeout'));
-                }, 30000); // 30 second timeout
-
-                worker.onerror = (error) => {
-                    cleanup();
-                    reject(new Error('Worker error: ' + error.message));
-                };
-
-                worker.onmessage = (e) => {
-                    if (!e.data) {
-                        cleanup();
-                        reject(new Error('Invalid worker message'));
-                        return;
-                    }
-
-                    const { type } = e.data;
-
-                    switch (type) {
-                        case 'ready': {
-                            // Worker is ready, start conversion
-                            const reader = new FileReader();
-                            reader.onload = () => {
-                                try {
-                                    worker.postMessage({
-                                        type: 'run',
-                                        MEMFS: [{
-                                            name: 'input.webm',
-                                            data: new Uint8Array(reader.result)
-                                        }]
-                                    });
-                                } catch (error) {
-                                    cleanup();
-                                    reject(error);
-                                }
-                            };
-                            reader.onerror = () => {
-                                cleanup();
-                                reject(new Error('Failed to read WebM file'));
-                            };
-                            reader.readAsArrayBuffer(webmBlob);
-                            break;
-                        }
-
-                        case 'progress': {
-                            // Handle progress updates from FFmpeg worker
-                            const progress = e.data.progress || 0;
-                            console.log(`Client-side conversion progress: ${progress}%`);
-                            // We could emit this to the UI if needed
-                            break;
-                        }
-
-                        case 'done': {
-                            const memfs = e.data.MEMFS || e.data.data?.MEMFS;
-                            const outFile = Array.isArray(memfs)
-                                ? (memfs.find(f => f.name === 'output.mp4') || memfs[0])
-                                : null;
-                            if (outFile?.data) {
-                                const mp4Blob = new Blob([outFile.data], { type: 'video/mp4' });
-                                cleanup();
-                                resolve(mp4Blob);
-                            } else {
-                                cleanup();
-                                reject(new Error('No data in conversion result'));
-                            }
-                            break;
-                        }
-
-                        case 'error':
-                            cleanup();
-                            reject(new Error(e.data.error || 'Client-side conversion failed'));
-                            break;
-
-                        default:
-                            // Ignore other message types (like log messages)
-                            break;
-                    }
-                };
-
-            } catch (error) {
-                cleanup();
-                reject(new Error('Failed to create worker: ' + error.message));
-            }
-        });
-    },
-
-    async convertServerSide(webmBlob) {
-        console.log('Attempting server-side MP4 conversion...');
-        
-        const formData = new FormData();
-        formData.append('file', webmBlob, 'recording.webm');
-        
-        const response = await fetch('/upload-video', {
-            method: 'POST',
-            body: formData
-        });
-        
-        if (!response.ok) {
-            throw new Error('Server conversion failed: ' + response.statusText);
-        }
-        
-        const result = await response.json();
-        
-        if (!result.ok) {
-            throw new Error('Server conversion failed: ' + (result.error || 'Unknown error'));
-        }
-        
-        // Download the converted file
-        const videoResponse = await fetch(result.path);
-        if (!videoResponse.ok) {
-            throw new Error('Failed to download converted video');
-        }
-        
-        const mp4Blob = await videoResponse.blob();
-        
-        if (result.converted) {
-            console.log('Server-side conversion successful');
-            // Return the converted MP4 blob
-            return mp4Blob;
         } else {
-            console.log('Server returned original file:', result.error || 'server conversion not available');
-            
-            // Check if we got a WebM file that we can potentially convert client-side
-            if (mp4Blob.type.includes('webm') || result.path.includes('.webm')) {
-                console.log('Server returned WebM file - attempting client-side conversion as fallback');
-                
-                try {
-                    // Attempt client-side conversion on the returned WebM blob
-                    const clientConvertedBlob = await this.convertClientSide(mp4Blob);
-                    console.log('Client-side fallback conversion successful');
-                    return clientConvertedBlob;
-                } catch (clientError) {
-                    console.warn('Client-side fallback also failed:', clientError.message);
-                    // Return the original WebM as final fallback
-                    return mp4Blob;
-                }
-            }
-            
-            // If server explicitly failed with an error, throw it
-            if (result.error && !result.error.includes('not available') && !result.error.includes('not configured')) {
-                throw new Error(result.error);
-            }
-            
-            // Return whatever blob we got as fallback
-            return mp4Blob;
+            return {
+                mimeType: this.getFallbackMimeType(),
+                format: 'webm',
+                needsConversion: false,
+                message: 'Recording in WebM format (MP4 not supported)'
+            };
         }
     },
 
+    // Legacy method for backward compatibility - now recommends direct recording
+    async convertToMp4(webmBlob) {
+        console.log('convertToMp4 called - checking if conversion is needed...');
+        
+        // If we already have an MP4 blob or MP4 is supported, no conversion needed
+        if (webmBlob.type.includes('mp4')) {
+            console.log('Blob is already MP4 format');
+            return webmBlob;
+        }
+
+        // Check if direct MP4 recording should have been used instead
+        if (this.isDirectMP4Supported()) {
+            console.log('MP4 is supported - should record directly in MP4 format');
+            throw new Error('Use direct MP4 recording instead of post-processing conversion. Enable MP4 in MediaRecorder options.');
+        }
+
+        // If MP4 is not supported, return the original blob
+        console.log('MP4 not supported in this browser - keeping WebM format');
+        return webmBlob;
+    },
+
+    // Audio encoding (unchanged)
     async encodeMp3(samples, sampleRate) {
         if (!window.lamejs) {
             try {
@@ -227,71 +112,73 @@ export const mp4Utils = {
     },
 
     floatTo16BitPCM(float32Array) {
-        const l = float32Array.length;
-        const buf = new Int16Array(l);
-        for (let i = 0; i < l; i++) {
-            let s = Math.max(-1, Math.min(1, float32Array[i]));
-            buf[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        const int16Array = new Int16Array(float32Array.length);
+        for (let i = 0; i < float32Array.length; i++) {
+            const sample = Math.max(-1, Math.min(1, float32Array[i]));
+            int16Array[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
         }
-        return buf;
+        return int16Array;
     },
 
-    loadLameJS() {
-        return new Promise((resolve, reject) => {
+    async loadLameJS() {
+        if (!window.lamejs) {
             const script = document.createElement('script');
-            script.src = 'https://unpkg.com/lamejs@1.2.0/lame.min.js';
-            script.onload = () => setTimeout(resolve, 50);
-            script.onerror = reject;
-            document.head.appendChild(script);
-        });
+            script.src = 'https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js';
+            
+            return new Promise((resolve, reject) => {
+                script.onload = () => resolve();
+                script.onerror = () => reject(new Error('Failed to load lamejs'));
+                document.head.appendChild(script);
+            });
+        }
     },
 
-    // Version checking and diagnostics
+    // System diagnostics
     async checkVersions() {
-        try {
-            const response = await fetch('/api/versions');
-            if (!response.ok) {
-                throw new Error('Failed to fetch version info');
-            }
-            const serverVersions = await response.json();
-            
-            const clientInfo = {
+        const info = {
+            browser: {
                 userAgent: navigator.userAgent,
-                webRTC: !!navigator.mediaDevices,
-                getDisplayMedia: !!navigator.mediaDevices?.getDisplayMedia,
-                mediaRecorder: !!window.MediaRecorder,
-                worker: !!window.Worker,
-                indexedDB: !!window.indexedDB,
-                supportedMimeTypes: this.getSupportedMimeTypes()
-            };
-            
-            return {
-                server: serverVersions,
-                client: clientInfo,
-                timestamp: new Date().toISOString()
-            };
-        } catch (error) {
-            console.error('Version check failed:', error);
-            throw error;
-        }
+                mediaRecorder: typeof MediaRecorder !== 'undefined',
+                webRTC: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+                mp4Support: this.isDirectMP4Supported(),
+                recommendedConfig: this.getRecordingConfig()
+            },
+            server: {
+                note: 'Simplified approach - no server-side conversion needed'
+            },
+            supportedFormats: this.getSupportedMimeTypes(),
+            recommendations: {
+                video: this.isDirectMP4Supported() 
+                    ? 'Use direct MP4 recording with MediaRecorder'
+                    : 'Use WebM format - MP4 not supported in this browser',
+                audio: 'Use MP3 encoding for audio-only recordings'
+            }
+        };
+        
+        return info;
     },
 
     getSupportedMimeTypes() {
-        const types = [
+        const allTypes = [
+            'video/mp4',
+            'video/mp4;codecs=h264',
+            'video/mp4;codecs=h264,aac',
+            'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
             'video/webm',
             'video/webm;codecs=vp8',
             'video/webm;codecs=vp9',
             'video/webm;codecs=h264',
-            'video/mp4',
-            'video/mp4;codecs=h264',
+            'video/webm;codecs=vp8,opus',
+            'video/webm;codecs=vp9,opus',
+            'video/webm;codecs=h264,opus',
             'audio/webm',
             'audio/webm;codecs=opus',
             'audio/mp4'
         ];
         
-        return types.filter(type => {
+        return allTypes.filter(type => {
             try {
-                return MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(type);
+                return MediaRecorder.isTypeSupported(type);
             } catch (e) {
                 return false;
             }

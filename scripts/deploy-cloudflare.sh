@@ -1,5 +1,5 @@
 #!/bin/bash
-# Quick Cloudflare Deployment Script for Screen Recorder
+# Simplified Cloudflare Deployment Script for Screen Recorder
 
 set -e
 
@@ -80,7 +80,10 @@ echo ""
 echo "3. Set environment variable in Pages dashboard:"
 echo "   WORKER_URL=$WORKER_URL"
 echo ""
-echo "4. Optional: Add CloudConvert API key for enhanced MP4 conversion:"
-echo "   CLOUDCONVERT_API_KEY=your-api-key-here"
-echo ""
 echo -e "${GREEN}✅ Deployment ready! Your app will be available at: https://screen-recorder.pages.dev${NC}"
+echo ""
+echo -e "${GREEN}📱 Features ready:${NC}"
+echo "  • Direct MP4 recording (when browser supports it)"
+echo "  • WebM fallback recording"
+echo "  • Serverless file storage via R2"
+echo "  • Global edge distribution"

@@ -51,10 +51,51 @@ export const recordingUtils = {
         draw();
     },
 
-    setupMediaRecorder(stream, onDataAvailable, onStop) {
-        this.mediaRecorder = new MediaRecorder(stream, {
-            mimeType: stream.getVideoTracks().length > 0 ? 'video/webm;codecs=vp8,opus' : 'audio/webm'
-        });
+    setupMediaRecorder(stream, onDataAvailable, onStop, preferMP4 = false) {
+        // Import mp4Utils to get format recommendations
+        let mimeType;
+        
+        if (stream.getVideoTracks().length > 0) {
+            // Video recording
+            if (preferMP4) {
+                // Try to get the best MP4 format
+                const mp4Types = [
+                    'video/mp4;codecs=h264,aac',
+                    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+                    'video/mp4;codecs=h264',
+                    'video/mp4'
+                ];
+                
+                mimeType = mp4Types.find(type => MediaRecorder.isTypeSupported(type));
+                
+                if (!mimeType) {
+                    // Fall back to WebM
+                    const webmTypes = [
+                        'video/webm;codecs=h264,opus',
+                        'video/webm;codecs=vp9,opus',
+                        'video/webm;codecs=vp8,opus'
+                    ];
+                    mimeType = webmTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
+                    console.log('MP4 not supported, using WebM format:', mimeType);
+                } else {
+                    console.log('Using MP4 format:', mimeType);
+                }
+            } else {
+                // Default to WebM
+                const webmTypes = [
+                    'video/webm;codecs=vp8,opus',
+                    'video/webm;codecs=vp9,opus',
+                    'video/webm'
+                ];
+                mimeType = webmTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
+                console.log('Using WebM format:', mimeType);
+            }
+        } else {
+            // Audio-only recording
+            mimeType = 'audio/webm';
+        }
+        
+        this.mediaRecorder = new MediaRecorder(stream, { mimeType });
         
         this.mediaRecorder.ondataavailable = onDataAvailable;
         this.mediaRecorder.onstop = onStop;
