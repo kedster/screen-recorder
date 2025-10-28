@@ -12,6 +12,11 @@ yarn-error.log*
 # Recordings directory (local development)
 recordings/
 
+# Backup files
+*-old.js
+*-old.html
+*-old.css
+
 # Cloudflare
 .wrangler/
 dist/
