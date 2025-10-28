@@ -76,10 +76,12 @@ function stopTimer() {
 async function getOverlayOptions() {
     const iconFile = document.getElementById('iconFile')?.files[0];
     let iconImage = null;
+    let iconUrl = null;
     
     if (iconFile && document.getElementById('enableIcon')?.checked) {
         try {
             iconImage = await overlayUtils.processIcon(iconFile);
+            iconUrl = URL.createObjectURL(iconFile);
         } catch (err) {
             console.warn('Failed to process icon:', err);
         }
@@ -94,7 +96,8 @@ async function getOverlayOptions() {
         labelText: document.getElementById('labelText')?.value || '',
         icon: document.getElementById('enableIcon')?.checked || false,
         iconOpacity: parseInt(document.getElementById('iconOpacity')?.value || 60),
-        iconImage: iconImage
+        iconImage: iconImage,
+        iconUrl: iconUrl  // For preview
     };
 }
 
