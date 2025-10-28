@@ -82,6 +82,9 @@ async function getOverlayOptions() {
         try {
             iconImage = await overlayUtils.processIcon(iconFile);
             iconUrl = URL.createObjectURL(iconFile);
+            // Store URL for cleanup later
+            if (!window._overlayIconUrls) window._overlayIconUrls = [];
+            window._overlayIconUrls.push(iconUrl);
         } catch (err) {
             console.warn('Failed to process icon:', err);
         }
@@ -485,6 +488,17 @@ window.addEventListener('load', async () => {
 // Cleanup on page unload
 window.addEventListener('beforeunload', () => {
     if (storage.db) storage.cleanupSession(sessionId);
+    // Clean up icon URLs to prevent memory leaks
+    if (window._overlayIconUrls) {
+        window._overlayIconUrls.forEach(url => {
+            try {
+                URL.revokeObjectURL(url);
+            } catch (e) {
+                // Ignore errors during cleanup
+            }
+        });
+        window._overlayIconUrls = [];
+    }
 });
 
 // Overlay preview handlers
