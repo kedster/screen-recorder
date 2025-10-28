@@ -3,145 +3,105 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Screen Recorder by Snap-View</title>
+    <title>Screen Recorder</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/1486/1486697.png">
     <link rel="stylesheet" href="styles.css">
     <script src="app.js" type="module"></script>
 </head>
 <body>
-    <!-- Downloads Panel (Fixed at top) -->
-    <div class="downloads-wrapper">
-        <div class="downloads-panel">
-            <div class="downloads" id="downloads"></div>
-            <button class="downloads-toggle" id="downloadsToggle" aria-label="Toggle downloads panel" title="Toggle downloads panel">
-                <i class="fas fa-chevron-down"></i>
-                <span>Downloads</span>
-            </button>
-        </div>
-    </div>
-
     <div class="container">
         <!-- Header -->
         <header class="header">
-            <div class="brand">
-                <img src="https://cdn-icons-png.flaticon.com/512/1486/1486697.png" alt="Snap-View Logo" class="brand-logo">
-                <h1>Screen Recorder <span class="brand-subtitle">by Snap-View</span></h1>
-            </div>
+            <h1>Screen Recorder</h1>
             <button class="theme-toggle" aria-label="Toggle dark mode">
                 <i class="fas fa-moon"></i>
             </button>
         </header>
 
-        <div class="cards">
-            <!-- Audio Recording Card -->
-            <div class="card">
-                <div class="card-header">
-                    <i class="fas fa-microphone card-icon"></i>
-                    <h2>Audio Recording</h2>
-                </div>
-                <p>Record from your microphone or capture tab audio</p>
-                <div class="visualizer">
-                    <canvas id="audioVisualizer" class="wave"></canvas>
-                </div>
-                <div class="button-group">
-                    <button id="startMic" class="btn">
-                        <i class="fas fa-microphone"></i>
-                        Start Mic Recording
-                    </button>
-                    <button id="startTab" class="btn">
-                        <i class="fas fa-desktop"></i>
-                        Start Tab Audio
-                    </button>
-                </div>
-                <div class="timer" id="audioTimer">00:00</div>
-            </div>
-
-            <!-- Screen Recording Card -->
-            <div class="card">
-                <div class="card-header">
-                    <i class="fas fa-video card-icon"></i>
-                    <h2>Screen Recording</h2>
-                </div>
-                <p>Capture your screen with optional audio</p>
+        <!-- Main Recording Section -->
+        <div class="main-recording-section">
+            <!-- Video Preview (top) -->
+            <div class="preview-container">
                 <div class="preview">
                     <video id="preview" muted playsinline></video>
                 </div>
-                
-                <div class="recording-options">
-                    <!-- Frame Options -->
-                    <div class="option-item frame-option">
-                        <label>
-                            <input type="checkbox" id="enableFrame">
-                            <span>Add Frame</span>
-                        </label>
-                        <div class="color-picker-group">
-                            <input type="color" id="frameColorStart" value="#4f46e5" class="color-picker" title="Frame gradient start color">
-                            <input type="color" id="frameColorEnd" value="#9333ea" class="color-picker" title="Frame gradient end color">
-                        </div>
-                        <div class="flex-align-center">
-                            <input type="range" id="frameSize" min="10" max="40" value="20" class="range-input" title="Frame size">
-                            <span class="frame-size-label">20px</span>
-                        </div>
-                    </div>
-                    
-                    <!-- Label Option -->
-                    <div class="option-item">
-                        <label>
-                            <input type="checkbox" id="enableLabel">
-                            <span>Add Label</span>
-                        </label>
-                        <input type="text" id="labelText" placeholder="Enter label text..." class="text-input">
-                    </div>
-                    
-                    <!-- Icon Overlay Option -->
-                    <div class="option-item">
-                        <label>
-                            <input type="checkbox" id="enableIcon">
-                            <span>Add Icon Overlay</span>
-                        </label>
-                        <input type="file" id="iconFile" accept=".png,.jpg,.jpeg,.ico" class="file-input" title="Upload icon image (PNG, JPG, or ICO)">
-                        <div class="flex-align-center">
-                            <input type="range" id="iconOpacity" min="20" max="100" value="60" class="range-input" title="Icon opacity">
-                            <span class="opacity-label">60%</span>
-                        </div>
-                    </div>
+            </div>
 
-                    <!-- MP4 Conversion Option -->
-                    <label class="option-item">
-                        <input type="checkbox" id="convertToMp4" checked>
-                        <span>Convert to MP4</span>
-                    </label>
-                </div>
-
-                <button id="startScreen" class="btn">
+            <!-- Recording Button (center) -->
+            <div class="recording-controls">
+                <button id="startScreen" class="record-btn">
                     <i class="fas fa-record-vinyl"></i>
-                    Start Screen Recording
+                    <span>Start Recording</span>
+                </button>
+                <button id="stop" class="btn btn-stop" disabled>
+                    <i class="fas fa-stop"></i>
+                    Stop Recording
                 </button>
                 <div class="timer" id="screenTimer">00:00</div>
+            </div>
+
+            <!-- Recording Options (below button) -->
+            <div class="recording-options">
+                <h3>Recording Options</h3>
+                
+                <!-- Frame Options -->
+                <div class="option-item frame-option">
+                    <label>
+                        <input type="checkbox" id="enableFrame">
+                        <span>Add Frame</span>
+                    </label>
+                    <div class="color-picker-group">
+                        <input type="color" id="frameColorStart" value="#4f46e5" class="color-picker" title="Frame gradient start color">
+                        <input type="color" id="frameColorEnd" value="#9333ea" class="color-picker" title="Frame gradient end color">
+                    </div>
+                    <div class="flex-align-center">
+                        <input type="range" id="frameSize" min="10" max="40" value="20" class="range-input" title="Frame size">
+                        <span class="frame-size-label">20px</span>
+                    </div>
+                </div>
+                
+                <!-- Label Option -->
+                <div class="option-item">
+                    <label>
+                        <input type="checkbox" id="enableLabel">
+                        <span>Add Label</span>
+                    </label>
+                    <input type="text" id="labelText" placeholder="Enter label text..." class="text-input">
+                </div>
+                
+                <!-- Icon Overlay Option -->
+                <div class="option-item">
+                    <label>
+                        <input type="checkbox" id="enableIcon">
+                        <span>Add Icon Overlay</span>
+                    </label>
+                    <input type="file" id="iconFile" accept=".png,.jpg,.jpeg,.ico" class="file-input" title="Upload icon image (PNG, JPG, or ICO)">
+                    <div class="flex-align-center">
+                        <input type="range" id="iconOpacity" min="20" max="100" value="60" class="range-input" title="Icon opacity">
+                        <span class="opacity-label">60%</span>
+                    </div>
+                </div>
+
+                <!-- MP4 Conversion Option -->
+                <label class="option-item">
+                    <input type="checkbox" id="convertToMp4" checked>
+                    <span>Convert to MP4</span>
+                </label>
             </div>
         </div>
 
         <div class="status" id="status"></div>
 
-        <!-- Stop Button -->
-        <div class="stop-button-container">
-            <button id="stop" class="btn btn-danger" disabled>
-                <i class="fas fa-stop"></i>
-                Stop Recording
-            </button>
-        </div>
-
-        <!-- Diagnostics Button -->
-        <div class="diagnostics-container" style="text-align: center; margin-top: 20px;">
-            <button id="checkVersions" class="btn btn-secondary" title="Check Node.js, ffmpeg versions and browser capabilities">
-                <i class="fas fa-info-circle"></i>
-                Check System Info
-            </button>
+        <!-- Gallery Section (at bottom) -->
+        <div class="gallery-section">
+            <h2>Saved Recordings</h2>
+            <div class="downloads" id="downloads">
+                <div class="no-downloads">No recordings yet</div>
+            </div>
         </div>
     </div>
 
-    <!-- Scripts (kept, but ensure module type to avoid import error) -->
     <script src="app.js" type="module"></script>
 </body>
 </html>

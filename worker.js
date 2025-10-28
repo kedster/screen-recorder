@@ -33,6 +33,11 @@ export default {
         return await handleVideoUpload(request, env, corsHeaders);
       }
       
+      // Convert endpoint for MP4 conversion
+      if (pathname === '/convert' && request.method === 'POST') {
+        return await handleConvert(request, env, corsHeaders);
+      }
+      
       // New super function for chunked video processing
       if (pathname === '/process-video-chunks' && request.method === 'POST') {
         return await handleVideoChunkProcessing(request, env, corsHeaders);
@@ -169,6 +174,58 @@ async function handleVideoUpload(request, env, corsHeaders) {
   } catch (error) {
     console.error('Video upload error:', error);
     return new Response(JSON.stringify({ error: 'Upload failed' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+}
+
+/**
+ * Handle video conversion request (WebM to MP4)
+ * Note: Cloudflare Workers don't support ffmpeg natively
+ * This endpoint stores the file and returns it as-is
+ * Client-side conversion using ffmpeg.wasm is recommended
+ */
+async function handleConvert(request, env, corsHeaders) {
+  try {
+    const formData = await request.formData();
+    const file = formData.get('file');
+    
+    if (!file) {
+      return new Response(JSON.stringify({ error: 'No file uploaded' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Generate filename
+    const timestamp = Date.now();
+    const filename = file.name || `recording_${timestamp}.webm`;
+    
+    // Store in R2 bucket
+    const fileBuffer = await file.arrayBuffer();
+    await env.RECORDINGS_BUCKET.put(filename, fileBuffer, {
+      httpMetadata: {
+        contentType: file.type || 'video/webm',
+      },
+    });
+
+    // Return the WebM file directly since we can't convert server-side
+    // The client should handle conversion using ffmpeg.wasm
+    return new Response(fileBuffer, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'video/webm',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      },
+    });
+
+  } catch (error) {
+    console.error('Convert error:', error);
+    return new Response(JSON.stringify({ 
+      error: 'Conversion failed',
+      message: 'Server-side conversion not available. Please use client-side conversion.'
+    }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
