@@ -20,7 +20,15 @@ let recordingStartTime = 0;
 let timerInterval = null;
 let currentStream = null;
 let currentBlob = null;
-const sessionId = Date.now().toString(36) + Math.random().toString(36).substr(2);
+// Generate secure session ID using crypto API
+const sessionId = crypto.randomUUID ? crypto.randomUUID() : generateSecureSessionId();
+
+// Fallback for browsers without randomUUID
+function generateSecureSessionId() {
+    const array = new Uint8Array(16);
+    crypto.getRandomValues(array);
+    return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+}
 
 // Initialize theme
 function initTheme() {
