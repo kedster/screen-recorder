@@ -72,6 +72,9 @@ function stopTimer() {
     if (screenTimer) screenTimer.textContent = '00:00';
 }
 
+// Module-level state for tracking icon URLs to prevent memory leaks
+const overlayIconUrls = [];
+
 // Get current overlay options
 async function getOverlayOptions() {
     const iconFile = document.getElementById('iconFile')?.files[0];
@@ -83,8 +86,7 @@ async function getOverlayOptions() {
             iconImage = await overlayUtils.processIcon(iconFile);
             iconUrl = URL.createObjectURL(iconFile);
             // Store URL for cleanup later
-            if (!window._overlayIconUrls) window._overlayIconUrls = [];
-            window._overlayIconUrls.push(iconUrl);
+            overlayIconUrls.push(iconUrl);
         } catch (err) {
             console.warn('Failed to process icon:', err);
         }
@@ -489,16 +491,8 @@ window.addEventListener('load', async () => {
 window.addEventListener('beforeunload', () => {
     if (storage.db) storage.cleanupSession(sessionId);
     // Clean up icon URLs to prevent memory leaks
-    if (window._overlayIconUrls) {
-        window._overlayIconUrls.forEach(url => {
-            try {
-                URL.revokeObjectURL(url);
-            } catch (e) {
-                // Ignore errors during cleanup
-            }
-        });
-        window._overlayIconUrls = [];
-    }
+    overlayIconUrls.forEach(url => URL.revokeObjectURL(url));
+    overlayIconUrls.length = 0;
 });
 
 // Overlay preview handlers
