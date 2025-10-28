@@ -118,6 +118,19 @@ export const recordingUtils = {
             this.currentStream.getTracks().forEach(track => track.stop());
             this.currentStream = null;
         }
+        
+        // Clean up overlay resources
+        if (this.overlaySourceVideo) {
+            this.overlaySourceVideo.pause();
+            this.overlaySourceVideo.srcObject = null;
+            if (this.overlaySourceVideo.parentNode) {
+                this.overlaySourceVideo.parentNode.removeChild(this.overlaySourceVideo);
+            }
+            this.overlaySourceVideo = null;
+        }
+        if (this.overlayCanvas) {
+            this.overlayCanvas = null;
+        }
 
         // Clear context
         this.mediaRecorder = null;

@@ -73,7 +73,18 @@ function stopTimer() {
 }
 
 // Get current overlay options
-function getOverlayOptions() {
+async function getOverlayOptions() {
+    const iconFile = document.getElementById('iconFile')?.files[0];
+    let iconImage = null;
+    
+    if (iconFile && document.getElementById('enableIcon')?.checked) {
+        try {
+            iconImage = await overlayUtils.processIcon(iconFile);
+        } catch (err) {
+            console.warn('Failed to process icon:', err);
+        }
+    }
+    
     return {
         frame: document.getElementById('enableFrame')?.checked || false,
         frameSize: parseInt(document.getElementById('frameSize')?.value || 20),
@@ -83,7 +94,7 @@ function getOverlayOptions() {
         labelText: document.getElementById('labelText')?.value || '',
         icon: document.getElementById('enableIcon')?.checked || false,
         iconOpacity: parseInt(document.getElementById('iconOpacity')?.value || 60),
-        iconImage: null
+        iconImage: iconImage
     };
 }
 
@@ -96,15 +107,64 @@ async function startScreenCapture() {
     setStatus('Requesting screen share...');
     
     try {
-        const stream = await recordingUtils.startScreenCapture();
+        const originalStream = await recordingUtils.startScreenCapture();
         
-        // Set up video preview
+        // Get overlay options (async because it may process icon file)
+        const options = await getOverlayOptions();
+        const hasOverlays = options.frame || (options.label && options.labelText) || (options.icon && options.iconImage);
+        
+        let recordingStream = originalStream;
+        let overlayCanvas = null;
+        
+        // If overlays are enabled, create a canvas stream with overlays applied
+        if (hasOverlays && previewVideo) {
+            console.log('Applying overlays to recording:', options);
+            setStatus('Preparing overlays...');
+            
+            // Create a hidden video element for processing
+            const sourceVideo = document.createElement('video');
+            sourceVideo.srcObject = originalStream;
+            sourceVideo.muted = true;
+            sourceVideo.style.display = 'none';
+            document.body.appendChild(sourceVideo);
+            
+            // Wait for video to be ready
+            await new Promise((resolve) => {
+                sourceVideo.onloadedmetadata = () => {
+                    sourceVideo.play();
+                    resolve();
+                };
+            });
+            
+            // Wait a bit for video to stabilize
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Create canvas with overlays
+            overlayCanvas = overlayUtils.createVideoCanvas(sourceVideo, options);
+            
+            // Get stream from canvas
+            const canvasStream = overlayCanvas.captureStream(30); // 30 fps
+            
+            // Combine canvas video track with original audio tracks
+            const audioTracks = originalStream.getAudioTracks();
+            const videoTrack = canvasStream.getVideoTracks()[0];
+            
+            recordingStream = new MediaStream([videoTrack, ...audioTracks]);
+            
+            // Store references for cleanup
+            recordingUtils.overlayCanvas = overlayCanvas;
+            recordingUtils.overlaySourceVideo = sourceVideo;
+            
+            console.log('Overlay canvas stream created successfully');
+        }
+        
+        // Set up video preview (show the original stream in preview)
         if (previewVideo) {
-            previewVideo.srcObject = stream;
+            previewVideo.srcObject = originalStream;
             previewVideo.onloadedmetadata = () => previewVideo.play();
         }
 
-        const mediaRecorder = recordingUtils.setupMediaRecorder(stream, 
+        const mediaRecorder = recordingUtils.setupMediaRecorder(recordingStream, 
             e => { if (e.data && e.data.size) recordingUtils.chunks.push(e.data); },
             onScreenStop
         );
@@ -112,7 +172,8 @@ async function startScreenCapture() {
         mediaRecorder.start(1000); // Capture in 1-second chunks
         startTimer(screenTimer);
         setStatus('Screen recording...', true);
-        showToast('Screen recording started');
+        const overlayMsg = hasOverlays ? ' with overlays' : '';
+        showToast(`Screen recording started${overlayMsg}`);
         
     } catch(err) {
         console.error('Screen capture error:', err);
@@ -161,16 +222,9 @@ async function onScreenStop() {
         
         console.log(`Recording blob size: ${blob.size} bytes`);
 
-        const options = getOverlayOptions();
+        // Overlays were already applied during recording if enabled
+        // Just need to pass conversion preference
         const processingOptions = {
-            frame: options.frame,
-            frameSize: options.frameSize,
-            frameColorStart: options.frameColorStart,
-            frameColorEnd: options.frameColorEnd,
-            label: options.label,
-            labelText: options.labelText,
-            icon: options.icon,
-            iconOpacity: options.iconOpacity,
             convertToMp4: document.getElementById('convertToMp4')?.checked || true,
         };
 
@@ -308,8 +362,18 @@ function createDownloadLink(recording) {
             
             if (isBackendProcessed && backendPath) {
                 console.log('Downloading from backend:', backendPath);
-                downloadUrl = backendPath;
                 filename = `recording_${recording.id}_processed.${getFileExtension(recording.type)}`;
+                
+                // Fetch the file from the backend first
+                showToast('Fetching file from server...', 'info');
+                const response = await fetch(backendPath);
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch file: ${response.status} ${response.statusText}`);
+                }
+                
+                const blob = await response.blob();
+                downloadUrl = URL.createObjectURL(blob);
             } else {
                 downloadUrl = URL.createObjectURL(recording.blob);
             }
@@ -321,9 +385,8 @@ function createDownloadLink(recording) {
             a.click();
             document.body.removeChild(a);
             
-            if (!isBackendProcessed) {
-                URL.revokeObjectURL(downloadUrl);
-            }
+            // Always revoke the URL after download since we create it for both cases now
+            setTimeout(() => URL.revokeObjectURL(downloadUrl), 100);
             
             await storage.markDownloaded(recording.id);
             showToast('Download started successfully');
@@ -430,7 +493,10 @@ const frameSizeLabel = document.querySelector('.frame-size-label');
 const iconOpacity = document.getElementById('iconOpacity');
 const opacityLabel = document.querySelector('.opacity-label');
 
-const updatePreview = () => overlayUtils.updatePreview(previewContainer, getOverlayOptions());
+const updatePreview = async () => {
+    const options = await getOverlayOptions();
+    overlayUtils.updatePreview(previewContainer, options);
+};
 
 if (frameCheckbox) frameCheckbox.addEventListener('change', updatePreview);
 if (frameColorStart) frameColorStart.addEventListener('input', updatePreview);
