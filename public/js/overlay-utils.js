@@ -109,15 +109,19 @@ export const overlayUtils = {
         }
 
         // Handle icon
-        if (options.icon && options.iconImage) {
+        if (options.icon && (options.iconImage || options.iconUrl)) {
             if (!previewContainer.querySelector('.preview-icon')) {
                 const iconEl = document.createElement('div');
                 iconEl.className = 'preview-icon';
                 previewContainer.appendChild(iconEl);
             }
             const iconEl = previewContainer.querySelector('.preview-icon');
-            iconEl.style.backgroundImage = `url(${options.iconImage})`;
-            iconEl.style.opacity = options.iconOpacity / 100;
+            // Use iconUrl for preview (CSS background-image), iconImage is for canvas rendering
+            const iconSrc = options.iconUrl ?? options.iconImage;
+            if (iconSrc) {
+                iconEl.style.backgroundImage = `url(${iconSrc})`;
+                iconEl.style.opacity = options.iconOpacity / 100;
+            }
             previewContainer.classList.add('with-icon');
         } else {
             const iconEl = previewContainer.querySelector('.preview-icon');
