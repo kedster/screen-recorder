@@ -154,10 +154,10 @@ async function handleVideoUpload(request, env, corsHeaders) {
     
     if (convertToMp4 && !filename.endsWith('.mp4')) {
       // Change extension to .mp4 if conversion requested
-      finalFilename = filename.replace(/\.(webm|dat)$/, '') + '.mp4';
+      finalFilename = filename.replace(/\.(webm|dat|mov|avi|mkv)$/, '') + '.mp4';
       contentType = 'video/mp4';
-    } else if (!filename.match(/\.(webm|mp4)$/)) {
-      // Add .webm as default if no extension
+    } else if (!filename.match(/\.(webm|mp4|mov|avi|mkv)$/)) {
+      // Add .webm as default if no video extension
       finalFilename = filename + '.webm';
     }
     
@@ -230,11 +230,23 @@ async function handleConvert(request, env, corsHeaders) {
     const baseName = file.name?.replace(/\.[^/.]+$/, '') || `recording_${timestamp}`;
     const filename = `${baseName}.${outputFormat}`;
     
+    // Determine correct content type based on format
+    let contentType;
+    if (outputFormat === 'mp3') {
+      contentType = 'audio/mpeg';
+    } else if (outputFormat === 'mp4') {
+      contentType = 'video/mp4';
+    } else if (outputFormat === 'webm') {
+      contentType = 'video/webm';
+    } else {
+      contentType = file.type || 'application/octet-stream';
+    }
+    
     // Store in R2 bucket
     const fileBuffer = await file.arrayBuffer();
     await env.RECORDINGS_BUCKET.put(filename, fileBuffer, {
       httpMetadata: {
-        contentType: file.type || `video/${outputFormat}`,
+        contentType: contentType,
       },
       customMetadata: {
         originalType: file.type,
@@ -573,7 +585,8 @@ async function handleVideoChunkProcessing(request, env, corsHeaders) {
     
     // Ensure filename has correct extension
     if (!finalFilename.endsWith(fileExtension)) {
-      finalFilename = finalFilename.replace(/\.(webm|mp4|mp3|dat)?$/, '') + fileExtension;
+      // Remove any existing extension before adding the correct one
+      finalFilename = finalFilename.replace(/\.(webm|mp4|mp3|dat)$/, '') + fileExtension;
     }
     
     // Process the file
