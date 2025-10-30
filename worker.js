@@ -128,12 +128,14 @@ async function handleAudioUpload(request, env, corsHeaders) {
 }
 
 /**
- * Handle video file uploads with optional conversion
+ * Handle video file uploads with optional MP4 processing
+ * Supports both WebM and MP4 formats
  */
 async function handleVideoUpload(request, env, corsHeaders) {
   try {
     const formData = await request.formData();
     const file = formData.get('file');
+    const convertToMp4 = formData.get('convertToMp4') === 'true';
     
     if (!file) {
       return new Response(JSON.stringify({ error: 'No file uploaded' }), {
@@ -145,35 +147,59 @@ async function handleVideoUpload(request, env, corsHeaders) {
     // Generate filename
     const timestamp = Date.now();
     const filename = formData.get('filename') || file.name || `recording_${timestamp}`;
-    const originalName = filename.endsWith('.webm') ? filename : (filename + '.webm');
-    const mp4Name = originalName.replace(/\.webm$|\.dat$|$/, '.mp4');
     
-    // Store original file in R2 bucket
+    // Determine file extension based on conversion preference
+    let finalFilename = filename;
+    let contentType = file.type || 'video/webm';
+    
+    if (convertToMp4 && !filename.endsWith('.mp4')) {
+      // Change extension to .mp4 if conversion requested
+      finalFilename = filename.replace(/\.(webm|dat)$/, '') + '.mp4';
+      contentType = 'video/mp4';
+    } else if (!filename.match(/\.(webm|mp4)$/)) {
+      // Add .webm as default if no extension
+      finalFilename = filename + '.webm';
+    }
+    
+    // Store file in R2 bucket
     const fileBuffer = await file.arrayBuffer();
-    await env.RECORDINGS_BUCKET.put(originalName, fileBuffer, {
+    await env.RECORDINGS_BUCKET.put(finalFilename, fileBuffer, {
       httpMetadata: {
-        contentType: file.type || 'video/webm',
+        contentType: contentType,
+      },
+      customMetadata: {
+        originalType: file.type,
+        timestamp: timestamp.toString(),
+        convertToMp4: convertToMp4.toString(),
       },
     });
 
-    // For now, return the original file since Cloudflare Workers
-    // don't have ffmpeg built-in. In production, you could:
-    // 1. Use a third-party conversion service
-    // 2. Trigger a Durable Object for conversion
-    // 3. Use client-side conversion only
-    
-    return new Response(JSON.stringify({ 
+    // Return success response with processing notes
+    const response = { 
       ok: true, 
-      path: `/recordings/${originalName}`,
-      converted: false,
-      note: 'Server-side video conversion not available in Cloudflare Workers. Consider client-side conversion.'
-    }), {
+      path: `/recordings/${finalFilename}`,
+      filename: finalFilename,
+      size: fileBuffer.byteLength,
+      format: finalFilename.endsWith('.mp4') ? 'mp4' : 'webm',
+    };
+    
+    // Add note about conversion if requested
+    if (convertToMp4) {
+      response.note = 'File stored with MP4 extension. For actual format conversion, use client-side ffmpeg.wasm or external service.';
+      response.converted = false;
+      response.requiresClientConversion = true;
+    }
+    
+    return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
     console.error('Video upload error:', error);
-    return new Response(JSON.stringify({ error: 'Upload failed' }), {
+    return new Response(JSON.stringify({ 
+      error: 'Upload failed',
+      message: error.message 
+    }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -181,15 +207,16 @@ async function handleVideoUpload(request, env, corsHeaders) {
 }
 
 /**
- * Handle video conversion request (WebM to MP4)
+ * Handle video/audio conversion request (WebM to MP4/MP3)
  * Note: Cloudflare Workers don't support ffmpeg natively
- * This endpoint stores the file and returns it as-is
+ * This endpoint stores the file and returns metadata for client-side conversion
  * Client-side conversion using ffmpeg.wasm is recommended
  */
 async function handleConvert(request, env, corsHeaders) {
   try {
     const formData = await request.formData();
     const file = formData.get('file');
+    const outputFormat = formData.get('format') || 'mp4'; // mp4, mp3, webm
     
     if (!file) {
       return new Response(JSON.stringify({ error: 'No file uploaded' }), {
@@ -198,25 +225,36 @@ async function handleConvert(request, env, corsHeaders) {
       });
     }
 
-    // Generate filename
+    // Generate filename with appropriate extension
     const timestamp = Date.now();
-    const filename = file.name || `recording_${timestamp}.webm`;
+    const baseName = file.name?.replace(/\.[^/.]+$/, '') || `recording_${timestamp}`;
+    const filename = `${baseName}.${outputFormat}`;
     
     // Store in R2 bucket
     const fileBuffer = await file.arrayBuffer();
     await env.RECORDINGS_BUCKET.put(filename, fileBuffer, {
       httpMetadata: {
-        contentType: file.type || 'video/webm',
+        contentType: file.type || `video/${outputFormat}`,
+      },
+      customMetadata: {
+        originalType: file.type,
+        requestedFormat: outputFormat,
+        timestamp: timestamp.toString(),
       },
     });
 
-    // Return the WebM file directly since we can't convert server-side
-    // The client should handle conversion using ffmpeg.wasm
-    return new Response(fileBuffer, {
+    // Return success with file info - actual conversion should happen client-side
+    return new Response(JSON.stringify({
+      ok: true,
+      path: `/recordings/${filename}`,
+      filename: filename,
+      size: fileBuffer.byteLength,
+      format: outputFormat,
+      note: 'File stored. For format conversion, use client-side ffmpeg.wasm.'
+    }), {
       headers: {
         ...corsHeaders,
-        'Content-Type': 'video/webm',
-        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Type': 'application/json',
       },
     });
 
@@ -224,7 +262,7 @@ async function handleConvert(request, env, corsHeaders) {
     console.error('Convert error:', error);
     return new Response(JSON.stringify({ 
       error: 'Conversion failed',
-      message: 'Server-side conversion not available. Please use client-side conversion.'
+      message: error.message || 'Server-side conversion not available. Please use client-side conversion.'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -482,7 +520,8 @@ async function handleUploadStatus(pathname, env, corsHeaders) {
 }
 
 /**
- * Super function for video chunk processing - handles everything in one call
+ * Super function for video/audio chunk processing - handles everything in one call
+ * Supports both video (MP4/WebM) and audio (MP3) formats
  */
 async function handleVideoChunkProcessing(request, env, corsHeaders) {
   try {
@@ -510,37 +549,79 @@ async function handleVideoChunkProcessing(request, env, corsHeaders) {
 
     // Generate filename
     const timestamp = Date.now();
-    const finalFilename = filename || `recording_${timestamp}.webm`;
+    let finalFilename = filename || `recording_${timestamp}`;
     
-    // Process the video file
+    // Determine content type and extension
+    let contentType = file.type || 'video/webm';
+    let fileExtension = '.webm';
+    
+    // Handle MP3 audio files
+    if (file.type === 'audio/mpeg' || finalFilename.includes('.mp3')) {
+      fileExtension = '.mp3';
+      contentType = 'audio/mpeg';
+    } 
+    // Handle MP4 conversion preference
+    else if (processingOptions.convertToMp4 === true || finalFilename.includes('.mp4')) {
+      fileExtension = '.mp4';
+      contentType = 'video/mp4';
+    }
+    // Handle WebM video
+    else if (file.type?.includes('webm') || finalFilename.includes('.webm')) {
+      fileExtension = '.webm';
+      contentType = 'video/webm';
+    }
+    
+    // Ensure filename has correct extension
+    if (!finalFilename.endsWith(fileExtension)) {
+      finalFilename = finalFilename.replace(/\.(webm|mp4|mp3|dat)?$/, '') + fileExtension;
+    }
+    
+    // Process the file
     const fileBuffer = await file.arrayBuffer();
     
     // Store the processed file directly
     await env.RECORDINGS_BUCKET.put(`recordings/${finalFilename}`, fileBuffer, {
       httpMetadata: {
-        contentType: file.type || 'video/webm',
+        contentType: contentType,
       },
       customMetadata: {
         processedAt: timestamp.toString(),
         processingOptions: JSON.stringify(processingOptions),
         originalSize: fileBuffer.byteLength.toString(),
+        originalType: file.type || 'unknown',
       },
     });
 
-    return new Response(JSON.stringify({ 
+    // Build response
+    const response = { 
       ok: true, 
       path: `/recordings/${finalFilename}`,
       processed: true,
       size: fileBuffer.byteLength,
       filename: finalFilename,
-      note: 'Video processed and stored successfully. Advanced processing (MP4 conversion, overlays) would require additional services.',
-    }), {
+      format: fileExtension.replace('.', ''),
+    };
+    
+    // Add notes about processing capabilities
+    if (processingOptions.convertToMp4 && fileExtension === '.mp4') {
+      response.note = 'File stored as MP4. Note: Actual format conversion requires client-side ffmpeg.wasm or external service.';
+      response.requiresClientConversion = true;
+    } else if (fileExtension === '.mp3') {
+      response.note = 'MP3 audio file processed and stored successfully.';
+    } else {
+      response.note = 'Video processed and stored successfully. Advanced processing (format conversion, overlays) requires additional services.';
+    }
+
+    return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('Video processing error:', error);
-    return new Response(JSON.stringify({ error: 'Video processing failed' }), {
+    console.error('Video/audio processing error:', error);
+    return new Response(JSON.stringify({ 
+      error: 'Processing failed',
+      message: error.message 
+    }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
